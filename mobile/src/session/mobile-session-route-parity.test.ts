@@ -618,7 +618,7 @@ describe('mobile session route extraction parity', () => {
     const contentBindings = CONTENT_COMPONENT_NAMES.flatMap(
       (name) => readHookFacts(name, definitions).bindings
     )
-    expect(main.hooks).toHaveLength(281)
+    expect(main.hooks).toHaveLength(284)
     expect(hash(main.hooks)).toBe(HEAD_MAIN_HOOK_SHA256)
     expect(hash(main.bindings)).toBe(HEAD_HOOK_BINDING_SHA256)
     expect(main.callbacks).toHaveLength(80)
