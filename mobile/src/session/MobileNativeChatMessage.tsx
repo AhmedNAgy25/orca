@@ -77,7 +77,8 @@ function MobileNativeChatMessageImpl({
   turnKey,
   onToggleTurn,
   activeTurnIsWorking,
-  structuredActivityUi = false
+  structuredActivityUi = false,
+  subagentLabel
 }: {
   message: NativeChatMessage
   toolsExpanded?: boolean
