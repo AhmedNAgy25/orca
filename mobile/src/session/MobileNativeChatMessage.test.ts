@@ -328,4 +328,31 @@ describe("MobileNativeChatMessage — a subagent's row speaks as that subagent",
   it("adds nothing to the session's own row", () => {
     expect(captions(renderAgentRow(undefined, 'review the PR'))).toEqual([])
   })
+
+  it('names no one on a settled row whose only content is hidden, and names the live one', () => {
+    const toolOnly: NativeChatMessage = {
+      id: 'a2',
+      role: 'assistant',
+      blocks: [{ type: 'tool-call', name: 'Grep', input: {}, state: 'completed' }],
+      timestamp: null,
+      source: 'transcript',
+      agentId: 'task-1'
+    }
+    const renderToolOnly = (activeTurnIsWorking: boolean): ReactTestRenderer => {
+      act(() => {
+        renderer = create(
+          createElement(MobileNativeChatMessage, {
+            message: toolOnly,
+            subagentLabel: 'review the PR',
+            structuredActivityUi: true,
+            activeTurnIsWorking
+          })
+        )
+      })
+      return renderer!
+    }
+    expect(captions(renderToolOnly(false))).toEqual([])
+    act(() => renderer?.unmount())
+    expect(captions(renderToolOnly(true))).toHaveLength(1)
+  })
 })

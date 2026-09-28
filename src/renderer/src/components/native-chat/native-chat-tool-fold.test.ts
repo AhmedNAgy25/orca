@@ -269,17 +269,20 @@ describe('foldToolMessages — each agent folds into its own run', () => {
     expect(folded[0]?.blocks).toEqual([text('delegating')])
   })
 
-  it('folds each agent into its own prose when their rows interleave', () => {
+  it("keeps interleaved agents in order, each call in its own agent's run", () => {
     const folded = foldToolMessages([
       msg({ id: 'parent', blocks: [text('delegating')] }),
       child({ id: 'child', blocks: [text('looking')] }),
       child({ id: 'child-grep', blocks: [call('Grep')] }),
       msg({ id: 'parent-read', blocks: [call('Read')] })
     ])
-    expect(folded.map((message) => message.id)).toEqual(['parent', 'child'])
-    expect(folded[0]?.blocks).toEqual([text('delegating'), call('Read')])
+    // The parent's later call stays where it happened, below the child's work,
+    // rather than jumping back up into the parent's earlier row.
+    expect(folded.map((message) => message.id)).toEqual(['parent', 'child', 'parent-read'])
+    expect(folded[0]?.blocks).toEqual([text('delegating')])
     expect(folded[1]?.blocks).toEqual([text('looking'), call('Grep')])
     expect(folded[1]?.agentId).toBe('task-1')
+    expect(folded[2]?.agentId).toBeUndefined()
   })
 
   it("ends every agent's run at a turn boundary", () => {

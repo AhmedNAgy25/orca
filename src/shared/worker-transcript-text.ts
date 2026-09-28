@@ -38,9 +38,9 @@ function workerTranscriptSpeaker(
   return label === undefined ? `${message.role}, subagent` : `${message.role}, subagent ${label}`
 }
 
-export function formatWorkerTranscriptMessage(
+function formatWorkerTranscriptMessage(
   message: NativeChatMessage,
-  subagentLabels?: ReadonlyMap<string, string>
+  subagentLabels: ReadonlyMap<string, string>
 ): string {
   // Every roster block is written beside a plain-text twin carrying the same
   // sentence, for clients that cannot draw the block. Text surfaces are those

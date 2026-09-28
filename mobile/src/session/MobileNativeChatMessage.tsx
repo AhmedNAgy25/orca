@@ -102,11 +102,6 @@ function MobileNativeChatMessageImpl({
 }): React.JSX.Element {
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
-  // A subagent's row sits where it happened but speaks as that subagent.
-  const subagentName =
-    isUser || agentJournalItemSubagentId(message) === null
-      ? null
-      : (subagentLabel ?? NATIVE_CHAT_SUBAGENT_ATTRIBUTION_COPY.unnamed)
   // Separate the agent's words from its tool activity: prose renders first, the
   // tool calls fold into a collapsible run beneath. The user's own messages get
   // an inverted (filled accent) bubble so they stand apart from agent prose.
@@ -125,6 +120,12 @@ function MobileNativeChatMessageImpl({
     !turnExpanded &&
     !toolsExpanded
   const showToolRun = tools.length > 0 && !settledToolsHidden
+  // A subagent's row sits where it happened but speaks as that subagent. A row
+  // whose only content is hidden behind its settled turn names no one.
+  const subagentName =
+    isUser || agentJournalItemSubagentId(message) === null || (prose.length === 0 && !showToolRun)
+      ? null
+      : (subagentLabel ?? NATIVE_CHAT_SUBAGENT_ATTRIBUTION_COPY.unnamed)
 
   return (
     <>

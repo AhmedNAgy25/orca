@@ -252,6 +252,23 @@ describe("a subagent's rows speak as that subagent", () => {
     expect(labelOf('answer')).toBeUndefined()
   })
 
+  it("keeps the parent's run live while its subagent works below it", () => {
+    const trailing = (rows: NativeChatMessage[]) =>
+      build(rows)
+        .filter((slot) => slot.trailingRun)
+        .map((slot) => slot.message.id)
+    const childRun: NativeChatMessage = { ...toolRun('child-run'), agentId: 'task-1' }
+    // The parent is still inside its spawn call; the child's work does not move it past.
+    expect(trailing([text('ask', 'go', 'user'), toolRun('spawn'), childRun])).toEqual([
+      'spawn',
+      'child-run'
+    ])
+    // The parent answering does move it past its own run, whatever the child does.
+    expect(
+      trailing([text('ask', 'go', 'user'), toolRun('spawn'), text('said', 'Done.'), childRun])
+    ).toEqual(['said', 'child-run'])
+  })
+
   it('reserves room for the caption on a subagent row', () => {
     const [parentSlot] = build([text('mine', 'same words')])
     const [childSlot] = build([child('theirs', 'same words')])
