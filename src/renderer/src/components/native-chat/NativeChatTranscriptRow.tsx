@@ -63,6 +63,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           deliveryFailed={context.failedDeliveryMessageIds?.has(message.id) === true}
           structuredActivityUi={context.showTurnStatus}
           folded={slot.folded}
+          subagentLabel={slot.subagentLabel}
           runtimeContext={context.runtimeContext}
         />
       )}

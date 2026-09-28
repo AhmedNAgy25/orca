@@ -13,6 +13,8 @@ import {
   isToolCallBlock,
   type NativeChatMessage
 } from '../../../../shared/native-chat-types'
+import { agentJournalItemSubagentId } from '../../../../shared/agent-session-journal-producer'
+import { nativeChatSubagentLabel } from '../../../../shared/native-chat-subagent-attribution'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
 import {
   nativeChatTurnFold,
@@ -48,6 +50,9 @@ export type NativeChatTranscriptSlot = {
   /** Whether this row's turn hides anything, so its status row offers a caret. */
   turnFolds: boolean
   turnDiff: NativeChatTurnDiff | undefined
+  /** The roster's name for the subagent that wrote this row, when one names it.
+   *  Whether a subagent wrote it at all is the message's own linkage. */
+  subagentLabel: string | undefined
   /** Height to reserve before the row has ever been measured. */
   estimatedHeight: number
 }
@@ -69,6 +74,8 @@ export type NativeChatTranscriptSlotsInput = {
   isWorking: boolean
   /** Session-level lifecycle, which outlives a transcript that never said "done". */
   lifecycleWorking: boolean
+  /** Each subagent's roster label, by the id its rows carry. */
+  subagentLabels?: ReadonlyMap<string, string>
 }
 
 export function buildNativeChatTranscriptSlots(
@@ -85,7 +92,8 @@ export function buildNativeChatTranscriptSlots(
     showTurnStatus,
     expandedTurnKeys,
     isWorking,
-    lifecycleWorking
+    lifecycleWorking,
+    subagentLabels
   } = input
   // One pass to decide what each row draws, then the fold over those readings —
   // so "is this the answer" and "does this row render prose" cannot disagree.
@@ -99,7 +107,8 @@ export function buildNativeChatTranscriptSlots(
       // and its plain-text twin is then the only record the spawn happened.
       outlivesTurn: message.blocks.some(
         (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
-      )
+      ),
+      ...(message.agentId === undefined ? {} : { agentId: message.agentId })
     }
   })
   // Liveness is the turn's, not any one call's: the run at the frontier stays
@@ -147,6 +156,7 @@ export function buildNativeChatTranscriptSlots(
     if (!drawsRow && status === undefined && turnDiff === undefined) {
       continue
     }
+    const subagentId = agentJournalItemSubagentId(message)
     slots.push({
       message,
       turnKey,
@@ -159,11 +169,13 @@ export function buildNativeChatTranscriptSlots(
       folded,
       turnFolds: turnKey !== undefined && foldableTurnKeys.has(turnKey),
       turnDiff,
+      subagentLabel: nativeChatSubagentLabel(subagentLabels, message),
       estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
         hasReceipt: receipt !== undefined,
         hasStatus: status !== undefined,
         hasTurnDiff: turnDiff !== undefined,
-        folded
+        folded,
+        attributed: subagentId !== null
       })
     })
   }

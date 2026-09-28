@@ -78,21 +78,27 @@ function dropUnattributableToolResults(message: NativeChatMessage): NativeChatMe
   return blocks.length > 0 ? { ...message, blocks } : null
 }
 
-/** Fold consecutive tool-only messages into their preceding assistant turn. */
+/** Fold consecutive tool-only messages into their preceding assistant turn.
+ *  Each producer folds into its own: a subagent's calls interleave with its
+ *  parent's in one journal, and absorbing them would present one agent's work
+ *  as the other's. Rows with no producer linkage all share one run. */
 export function foldToolMessages(messages: readonly NativeChatMessage[]): NativeChatMessage[] {
   const output: NativeChatMessage[] = []
-  let mutableAssistantIndex = -1
-  let clonedAssistantIndex = -1
+  const foldTargets = new Map<string | undefined, number>()
+  const cloned = new Set<number>()
+  const absorb = (index: number, blocks: readonly NativeChatBlock[]): void => {
+    if (!cloned.has(index)) {
+      output[index] = { ...output[index]!, blocks: [...output[index]!.blocks] }
+      cloned.add(index)
+    }
+    output[index]!.blocks.push(...blocks)
+  }
   for (const message of messages) {
-    if (isHarnessSidecarToolMessage(message) && mutableAssistantIndex >= 0) {
-      const index = mutableAssistantIndex
-      const assistant = output[index]
-      if (assistant?.role === 'assistant') {
-        if (clonedAssistantIndex !== index) {
-          output[index] = { ...assistant, blocks: [...assistant.blocks] }
-          clonedAssistantIndex = index
-        }
-        output[index].blocks.push(...message.blocks.filter(isToolResultBlock))
+    const producer = message.agentId
+    const target = foldTargets.get(producer)
+    if (isHarnessSidecarToolMessage(message) && target !== undefined) {
+      if (output[target]?.role === 'assistant') {
+        absorb(target, message.blocks.filter(isToolResultBlock))
         output.push({
           ...message,
           blocks: message.blocks.filter((block) => !isToolResultBlock(block))
@@ -100,32 +106,30 @@ export function foldToolMessages(messages: readonly NativeChatMessage[]): Native
         continue
       }
     }
-    if (isToolOnlyMessage(message) && mutableAssistantIndex >= 0) {
-      const index = mutableAssistantIndex
-      const assistant = output[index]
-      if (assistant?.role !== 'assistant') {
+    if (isToolOnlyMessage(message) && target !== undefined) {
+      if (output[target]?.role !== 'assistant') {
         output.push(message)
-        mutableAssistantIndex = -1
+        foldTargets.delete(producer)
         continue
       }
-      if (clonedAssistantIndex !== index) {
-        output[index] = { ...assistant, blocks: [...assistant.blocks] }
-        clonedAssistantIndex = index
-      }
-      output[index]!.blocks.push(...message.blocks)
+      absorb(target, message.blocks)
       continue
     }
     output.push(message)
     if (message.role === 'assistant') {
-      mutableAssistantIndex = output.length - 1
-      clonedAssistantIndex = -1
+      foldTargets.set(producer, output.length - 1)
     } else if (
       !isSubagentRosterMessage(message) &&
       !isBackgroundTaskMessage(message) &&
       (!isNoiseMessage(message) || isInterruptionBoundary(message))
     ) {
-      mutableAssistantIndex = -1
-      clonedAssistantIndex = -1
+      if (message.role === 'user' || isInterruptionBoundary(message)) {
+        // A turn boundary ends every run, so a child still working in the next
+        // turn does not reach back into the last one.
+        foldTargets.clear()
+      } else {
+        foldTargets.delete(producer)
+      }
     }
   }
   const attributedOutput: NativeChatMessage[] = []

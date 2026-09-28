@@ -4,6 +4,8 @@ import { Image, Text as NativeText, View } from 'react-native'
 import { splitNativeChatBlocks } from '../../../src/shared/native-chat-tool-fold'
 import { selectActiveToolCall } from '../../../src/shared/native-chat-tool-activity'
 import { isImageRefBlock, isTextBlock } from '../../../src/shared/native-chat-types'
+import { agentJournalItemSubagentId } from '../../../src/shared/agent-session-journal-producer'
+import { NATIVE_CHAT_SUBAGENT_ATTRIBUTION_COPY } from '../../../src/shared/native-chat-subagent-attribution'
 import type { NativeChatBlock, NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { MobileNativeChatTurnStatus } from './MobileNativeChatTurnStatus'
@@ -94,9 +96,16 @@ function MobileNativeChatMessageImpl({
   activeTurnIsWorking?: boolean
   /** Structured lane only: live tool progress plus the turn-status disclosure. */
   structuredActivityUi?: boolean
+  /** The roster's name for the subagent that wrote this row, when one names it. */
+  subagentLabel?: string
 }): React.JSX.Element {
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
+  // A subagent's row sits where it happened but speaks as that subagent.
+  const subagentName =
+    isUser || agentJournalItemSubagentId(message) === null
+      ? null
+      : (subagentLabel ?? NATIVE_CHAT_SUBAGENT_ATTRIBUTION_COPY.unnamed)
   // Separate the agent's words from its tool activity: prose renders first, the
   // tool calls fold into a collapsible run beneath. The user's own messages get
   // an inverted (filled accent) bubble so they stand apart from agent prose.
@@ -120,8 +129,29 @@ function MobileNativeChatMessageImpl({
     <>
       <View style={[styles.row, isUser && styles.rowUser]}>
         <View
-          style={[styles.content, isUser && styles.userBubble, isReasoning && styles.reasoning]}
+          style={[
+            styles.content,
+            isUser && styles.userBubble,
+            isReasoning && styles.reasoning,
+            subagentName !== null && styles.subagent
+          ]}
         >
+          {subagentName !== null ? (
+            <NativeText
+              style={styles.subagentCaption}
+              accessibilityLabel={
+                subagentLabel === undefined
+                  ? subagentName
+                  : NATIVE_CHAT_SUBAGENT_ATTRIBUTION_COPY.writtenBy.replaceAll(
+                      '{{value0}}',
+                      subagentLabel
+                    )
+              }
+              numberOfLines={1}
+            >
+              {subagentName}
+            </NativeText>
+          ) : null}
           {prose.map((block, index) => (
             <Prose
               key={index}
