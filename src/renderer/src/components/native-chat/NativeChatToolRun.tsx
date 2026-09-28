@@ -53,6 +53,8 @@ export function NativeChatToolRun({
   revealedDiff,
   onRevealDiff,
   subagentGroups = NO_SUBAGENT_GROUPS,
+  subagentSections,
+  onToggleSubagentSection,
   backgroundTasks = NO_BACKGROUND_TASKS,
   expandSignal,
   activeTurnIsWorking,
@@ -69,6 +71,9 @@ export function NativeChatToolRun({
   onRevealDiff?: (element: HTMLElement) => void
   /** Spawn-group rosters that belong with this run's activity, one row each. */
   subagentGroups?: NativeChatSubagentGroupBlock[]
+  /** The rosters' children whose rows open below this run, and whether each is open. */
+  subagentSections?: ReadonlyMap<string, boolean>
+  onToggleSubagentSection?: (agentId: string) => void
   /** Background tasks that belong with this run's activity, one row each. */
   backgroundTasks?: NativeChatBackgroundTaskBlock[]
   /** Legacy view-level default; production native-chat entry points pass false. */
@@ -105,7 +110,14 @@ export function NativeChatToolRun({
   // deciding the row is worth mounting cannot disagree about what draws.
   const subagentRows = subagentGroups
     .filter(isRenderableSubagentGroup)
-    .map((group) => <NativeChatSubagentRun key={group.groupId} block={group} />)
+    .map((group) => (
+      <NativeChatSubagentRun
+        key={group.groupId}
+        block={group}
+        sections={subagentSections}
+        onToggleSection={onToggleSubagentSection}
+      />
+    ))
   // Neither a roster nor a background task is tool activity, so both take every
   // escape below that the tool header does not: a task row outlives the turn
   // that started it and is the only durable report of how it ended.

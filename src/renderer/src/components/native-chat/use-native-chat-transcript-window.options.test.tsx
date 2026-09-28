@@ -43,6 +43,7 @@ const { MAX_RETIRED_NATIVE_CHAT_MEASUREMENTS, useNativeChatTranscriptWindow } =
 
 function slot(id: string): NativeChatTranscriptSlot {
   return {
+    kind: 'message',
     message: {
       id,
       role: 'assistant',
@@ -58,7 +59,8 @@ function slot(id: string): NativeChatTranscriptSlot {
     folded: false,
     turnFolds: false,
     turnDiff: undefined,
-    subagentLabel: undefined,
+    subagentSections: undefined,
+    depth: 0,
     estimatedHeight: 48
   }
 }

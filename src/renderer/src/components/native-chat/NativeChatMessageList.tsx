@@ -28,6 +28,9 @@ import {
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
+import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
+import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
+import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
 import { useNativeChatOlderHistoryAutoload } from './use-native-chat-older-history-autoload'
 import { NativeChatOlderHistoryRow } from './NativeChatOlderHistoryRow'
@@ -42,7 +45,6 @@ import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll
 
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { isStructuredAgentSessionThinking } from '../../../../shared/structured-agent-session-live-turn'
-import { nativeChatSubagentLabels } from '../../../../shared/native-chat-subagent-attribution'
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
 import {
   nativeChatTurnDiffs,
@@ -52,8 +54,6 @@ import {
 } from './native-chat-turn-diffs'
 
 export { ProviderFrameRow } from './NativeChatTranscriptChrome'
-
-const MAX_EXPANDED_TURNS = 128
 
 type NativeChatNavigationRequest =
   | { kind: 'diff'; target: NativeChatDiffReveal }
@@ -115,21 +115,7 @@ export function NativeChatMessageList({
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<string>>(new Set())
   const disclosures = useNativeChatDisclosures()
   const toggleExpandedTurn = useCallback((turnKey: string) => {
-    setExpandedTurnIds((current) => {
-      const next = new Set(current)
-      if (next.has(turnKey)) {
-        next.delete(turnKey)
-      } else {
-        if (next.size >= MAX_EXPANDED_TURNS) {
-          const oldest = next.values().next().value
-          if (oldest) {
-            next.delete(oldest)
-          }
-        }
-        next.add(turnKey)
-      }
-      return next
-    })
+    setExpandedTurnIds((current) => toggleNativeChatExpandedKey(current, turnKey))
   }, [])
 
   const { hasMore, loadingEarlier, loadEarlier } = session
@@ -143,12 +129,21 @@ export function NativeChatMessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session.agent, session.sessionId]
   )
+  const projection = useMemo(
+    () => projectMessages(session.messages),
+    [projectMessages, session.messages]
+  )
   const messages = useMemo(() => {
-    const projected = projectNativeChatTaskListFrames(projectMessages(session.messages))
+    const projected = projectNativeChatTaskListFrames(projection.conversation)
     // Structured sessions show goal state in the banner above the composer.
     return journalItems ? omitNativeChatThreadGoalRows(projected) : projected
-  }, [journalItems, projectMessages, session.messages])
-  const subagentLabels = useMemo(() => nativeChatSubagentLabels(messages), [messages])
+  }, [journalItems, projection.conversation])
+  const {
+    sections: subagentSections,
+    expandedSubagentIds,
+    toggleSubagentSection,
+    openSubagentSectionsAround
+  } = useNativeChatSubagentSections(messages, projection.subagentRows)
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
   const showTypingIndicator = showTurnStatus
@@ -168,13 +163,13 @@ export function NativeChatMessageList({
       return currentTurnKey
     })
   }, [messages])
-  const turnDiffs = useMemo(
-    () =>
-      journalItems
-        ? nativeChatTurnDiffs(messages, turnKeys)
-        : new Map<string, NativeChatTurnDiff>(),
-    [journalItems, messages, turnKeys]
-  )
+  const turnDiffs = useMemo(() => {
+    if (!journalItems) {
+      return new Map<string, NativeChatTurnDiff>()
+    }
+    const rows = nativeChatRowsInTranscriptOrder(messages, turnKeys, subagentSections)
+    return nativeChatTurnDiffs(rows.messages, rows.turnKeys)
+  }, [journalItems, messages, subagentSections, turnKeys])
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
   const thinking = useMemo(
@@ -204,10 +199,12 @@ export function NativeChatMessageList({
         expandedTurnKeys: expandedTurnIds,
         isWorking,
         lifecycleWorking,
-        subagentLabels
+        subagentSections,
+        expandedSubagentIds
       }),
     [
       currentTurnKey,
+      expandedSubagentIds,
       expandedTurnIds,
       isWorking,
       latestUserIndex,
@@ -215,7 +212,7 @@ export function NativeChatMessageList({
       messages,
       receipts,
       showTurnStatus,
-      subagentLabels,
+      subagentSections,
       turnDiffs,
       turnKeys,
       turnStatuses
@@ -288,13 +285,15 @@ export function NativeChatMessageList({
   const revealDiff = useCallback(
     (target: NativeChatDiffTarget) => {
       beginNavigation()
+      // A subagent's edit is revealed inside its section.
+      openSubagentSectionsAround(target.messageId)
       navigationSequence.current += 1
       setNavigationRequest({
         kind: 'diff',
         target: { ...target, requestId: navigationSequence.current }
       })
     },
-    [beginNavigation]
+    [beginNavigation, openSubagentSectionsAround]
   )
   const jumpToLatest = useCallback(() => {
     beginNavigation()
@@ -338,6 +337,7 @@ export function NativeChatMessageList({
       runtimeContext,
       onLinkClick,
       onToggleExpandedTurn: toggleExpandedTurn,
+      onToggleSubagentSection: toggleSubagentSection,
       onScrollMessageToTop: scrollMessageToTop,
       onRevealDiff: revealDiff
     }),
@@ -353,7 +353,8 @@ export function NativeChatMessageList({
       scrollMessageToTop,
       showTurnStatus,
       taskListPredecessors,
-      toggleExpandedTurn
+      toggleExpandedTurn,
+      toggleSubagentSection
     ]
   )
 

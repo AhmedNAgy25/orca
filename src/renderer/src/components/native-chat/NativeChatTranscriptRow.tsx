@@ -1,10 +1,12 @@
 import { memo } from 'react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
+import { cn } from '@/lib/utils'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import { MessageRow, type NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import { NativeChatResolutionReceipt } from './NativeChatResolutionReceipt'
 import { NativeChatWorkingStatus } from './NativeChatWorkingStatus'
 import { NativeChatTurnDiffRollup } from './NativeChatTurnDiffRollup'
+import { NativeChatSubagentSectionHead } from './NativeChatSubagentSectionHead'
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
@@ -23,6 +25,7 @@ export type NativeChatTranscriptRowContext = {
   runtimeContext?: RuntimeFileOperationArgs | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   onToggleExpandedTurn: (turnKey: string) => void
+  onToggleSubagentSection: (agentId: string) => void
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
 }
@@ -40,11 +43,28 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
   slot: NativeChatTranscriptSlot
   context: NativeChatTranscriptRowContext
 }): React.JSX.Element {
+  // A subagent's section is set off from the conversation it sits in.
+  const sectionClassName = cn(
+    slot.depth > 0 && 'border-l-2 border-border/60 pl-3',
+    slot.depth > 1 && 'ml-4'
+  )
+  if (slot.kind === 'subagent') {
+    return (
+      <div className={sectionClassName}>
+        <NativeChatSubagentSectionHead
+          agentId={slot.agentId}
+          entry={slot.entry}
+          expanded={slot.expanded}
+          onToggle={context.onToggleSubagentSection}
+        />
+      </div>
+    )
+  }
   const { message, turnKey, status, receipt, turnDiff } = slot
   const predecessors = context.taskListPredecessors.get(message.id)
   const expanded = turnKey ? context.expandedTurnIds.has(turnKey) : undefined
   return (
-    <div className="flex flex-col gap-5">
+    <div className={cn('flex flex-col gap-5', sectionClassName)}>
       {receipt ? (
         <NativeChatResolutionReceipt body={receipt} disclosureId={message.id} />
       ) : (
@@ -64,7 +84,8 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           deliveryNotice={context.deliveryNotices?.get(message.id)}
           structuredActivityUi={context.showTurnStatus}
           folded={slot.folded}
-          subagentLabel={slot.subagentLabel}
+          subagentSections={slot.subagentSections}
+          onToggleSubagentSection={context.onToggleSubagentSection}
           runtimeContext={context.runtimeContext}
         />
       )}
