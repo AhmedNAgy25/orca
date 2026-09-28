@@ -99,16 +99,20 @@ const HOST_COMPONENT_NAMES = new Set([
 // and the pane's `onCellBoxChange` goes to the viewport refit.
 // Again when one frame ref replaced the height ref, width ref and width state (hooks 280).
 // Again when one `notifyTerminalFrame` took the frame's layout (hooks 281, callbacks 80).
-const HEAD_MAIN_HOOK_SHA256 = '004b011722b17ac82c96f0b3c8e303d39b2431a216424e9b86a1ee6a4896f23e'
+// +3 hooks and +1 callback in the diff-note actions: the ref and state holding the notes a new agent
+// session is still being started with, and `sendDiffNotesToNewAgent`, which holds them until the
+// launch's reply so a second send can't start another agent with them. -1 hook as the two pending
+// selection refs became one. Net over main: hooks 281 -> 283, callbacks 80 -> 81.
+const HEAD_MAIN_HOOK_SHA256 = '0800e2e417fee8e979ef622a4f970c46c162c2a6ff8af2ecaac327e553b90f7a'
 // Moved when the prompt-cancel flag became one structured-session host support object (main).
 // Re-recorded against the merged tree. Again when the frame-layout and cell-box-change callbacks
 // named the refs they read in their dependency lists (react-doctor).
 // Again when the frame's width and height became one `terminalFrameRef`.
 // Again when the frame's layout moved into `notifyTerminalFrame`.
-const HEAD_HOOK_BINDING_SHA256 = 'c1bcb859202aaf8d612d3023cb4d895719da513879c61b01545a249a0bda662b'
+const HEAD_HOOK_BINDING_SHA256 = 'a9cd19a9f613abc038c0d4eaf1060766b7a8503bd5e6d168c20f37a4637fdc41'
 // Moved when `notifyTerminalFrame` joined and `handleTerminalFrameLayout` became `subscribeIntendedActiveTerminal`.
 const HEAD_CALLBACK_IDENTITY_SHA256 =
-  '9c966301b373c11b27359ef1388c593b638c7f6831186d5c5321553504183e07'
+  '6b73a8afaed01e1005517fb4eb0ed7886a90e9bc04d1c113144b0fb7f3925f8e'
 // Pins that no callback body in the route changed unnoticed. Body text, not behaviour: the sends
 // and repo reads inside them now name their `RpcOperation` instead of the raw `sendRequest` port.
 // Refreshed in step 6 for the gesture flush, whose `terminal.send` became `terminalInputSend` and
@@ -138,7 +142,10 @@ const HEAD_CALLBACK_IDENTITY_SHA256 =
 // Again when the frame's layout became one `notifyTerminalFrame`.
 // Again when the init option took the message's name, `initialData`.
 // Again when the document readers mapped refusal codes through one function and kept truncation.
-const HEAD_CALLBACK_BODY_SHA256 = 'ff818790399c8532ead38d047d072caf715070b21311538932da2dc811312b06'
+// Refreshed when `applySessionTabs` began recording a landed launch's tab on the host, and when it
+// began freeing the "+" lock as that tab lands. Refreshed when "Send review notes to AI" stopped
+// offering notes a new agent session is still being started with.
+const HEAD_CALLBACK_BODY_SHA256 = '5469ff88db787ac79d52432bd5b58177879e8d0c8976304ff6a09ec9742919e1'
 // Refreshed for the startup effect: both `worktree.activate` sends became `worktreeActivate`, and
 // the sleeping-agent check reads that operation's verdict instead of the reply envelope. Refreshed
 // again when the reporter took the reply and interpreted it itself, retiring the hand-built
@@ -149,7 +156,7 @@ const HEAD_CALLBACK_BODY_SHA256 = 'ff818790399c8532ead38d047d072caf715070b213115
 // Moved again by the keyboard seam above, which is the +1 effect.
 // -1 effect for the Markdown actions' Back registration, which is `useBackClaim`'s own now.
 // Moved by the capability probe setting that host support object.
-const HEAD_EFFECT_SHA256 = '9b045a547ed269acf95db16cc87e33a9035a20c6888fd30e0363e58bb6b7d883'
+const HEAD_EFFECT_SHA256 = 'c71e60957c6491521440caa4faea091f8df510a90aea0eea41c30cb95c2e0305'
 const HEAD_CONTENT_HOOK_SHA256 = '9c3b612fef3f370d66873aefdbe1d701f20cb64ded31fef5cc45fde6f8189581'
 // Same pin for the 12 bodies that sit in nested functions rather than callbacks, moved by the same
 // rewrite of those send and read expressions. Count unchanged. Refreshed again in step 6 for
@@ -212,8 +219,12 @@ const HEAD_TIMER_CLEANUP_SHA256 = 'c73f1d1c2cc89642f3d727d6f3b6b81860a9d6f342345
 // page `keyboardShouldPersistTaps` ('handled', 'always'), which react-native-web ignores. Natively
 // the ref is undefined. 532 -> 531: the live input's reopen flag reads the host OS, not an 'android' literal.
 // 531 -> 529: the markdown status line moved to `markdownReaderStatusText`.
+// +4 for the same activation's params; -1 for the older-host chat path's early `'agent-session'`.
+// -9 as the + menu's host launch left for `new-tab-agent-host-launch.ts` (the notes toasts, both
+// launch sources, `'submit'`, four outcome kinds); +1 `'launched'` for the landing that frees the
+// "+" lock. Net +9 over main: 529 -> 538.
 const HEAD_RUNTIME_STRING_SHA256 =
-  '4ab2f316f60c234480615136c02273675543f24d653eb76a62b76f6bc986d985'
+  'ebda6163c0e5b458fac5960fa9ea2f3ffad5cf24ec6d56ed6accdb5aa5c9bd4e'
 // Moved by both of the dock's fields: their refs, and the live one's submit handler, are the seam's now;
 // their keyboard type and remount key read the host OS.
 // Moved again when the terminal frame kept its laid-out width unrounded, for every fit.
@@ -221,9 +232,11 @@ const HEAD_RUNTIME_STRING_SHA256 =
 // Again when the frame's first laid-out layout alone subscribes a held-back document.
 // Again when the frame's onLayout made one `notifyTerminalFrame` call.
 const HEAD_HOST_JSX_SHA256 = 'f71b1ee495f67a6e389abf597948ffdff1f9a4a10cde6abefd2611ea4dd94245'
-const HEAD_LEAF_JSX_SHA256 = '62eb05c6e2ac0be6d553a141fc8aa1641fcb0c678777d5d539f490aab8648417'
+// Moved when the diff view's note actions began carrying the notes still being sent.
+const HEAD_LEAF_JSX_SHA256 = '9aaa0de329c05fcfaae6c5ebce28b7f45fbb4fe838cd66ed7844ab997123c4ae'
 const HEAD_STYLE_REFERENCE_SHA256 =
   '56a005a1f65b30c11092e3422caef67810e1ec50f66fdd06471c370138b1eeb6'
+// +1 for that activation's identity payload.
 const HEAD_IDENTITY_FIELD_SHA256 =
   '3996f701eceb723be18c2001e9ee770498bfd5b2ddcacae510c380eb0adae80a'
 const HEAD_NAVIGATION_SHA256 = '9d96f5dad7de555d6553eac39c0fab00efad507470fd562cb9beaa32db16f512'
@@ -618,10 +631,10 @@ describe('mobile session route extraction parity', () => {
     const contentBindings = CONTENT_COMPONENT_NAMES.flatMap(
       (name) => readHookFacts(name, definitions).bindings
     )
-    expect(main.hooks).toHaveLength(284)
+    expect(main.hooks).toHaveLength(283)
     expect(hash(main.hooks)).toBe(HEAD_MAIN_HOOK_SHA256)
     expect(hash(main.bindings)).toBe(HEAD_HOOK_BINDING_SHA256)
-    expect(main.callbacks).toHaveLength(80)
+    expect(main.callbacks).toHaveLength(81)
     expect(hash(main.callbacks)).toBe(HEAD_CALLBACK_IDENTITY_SHA256)
     expect(hash(main.callbackBodies)).toBe(HEAD_CALLBACK_BODY_SHA256)
     expect(main.effects).toHaveLength(24)
@@ -663,7 +676,7 @@ describe('mobile session route extraction parity', () => {
 
   it('preserves runtime strings, styles, and the expanded JSX tree', () => {
     const strings = readRuntimeStrings()
-    expect(strings).toHaveLength(529)
+    expect(strings).toHaveLength(538)
     expect(hash(strings)).toBe(HEAD_RUNTIME_STRING_SHA256)
     const jsx = readJsxFacts(readDefinitions())
     expect(jsx.host).toHaveLength(125)
