@@ -115,6 +115,16 @@ describe('a history page over a session with a subagent', () => {
     expect(page.hasOlder).toBe(false)
   })
 
+  it('reaches back to the start, not a page of the subagent alone, once fewer own rows remain', async () => {
+    await append(named('child-', 1, 3), child)
+    await append(named('own-', 1, 2))
+
+    const tail = read({ direction: 'tail', limit: 5 })
+
+    expect(textsOf(tail)).toEqual([...named('child-', 1, 3), 'own-1', 'own-2'])
+    expect(tail.hasOlder).toBe(false)
+  })
+
   it('still bounds a page by bytes, and paging back still reaches every row', async () => {
     const large = 'x'.repeat(250 * 1024)
     await append(['own-1'])
