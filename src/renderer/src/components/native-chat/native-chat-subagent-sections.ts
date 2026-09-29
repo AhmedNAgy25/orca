@@ -53,10 +53,29 @@ export const NO_NATIVE_CHAT_SUBAGENT_CHOICES: NativeChatSubagentChoices = {
   rosters: new Map()
 }
 
-/** A roster row's list: open or closed, and the sections under it, each open or closed. */
+/** A roster row's list: open or closed, and the children with a section, each open or
+ *  closed. An open child's rows follow its entry. */
 export type NativeChatSubagentRosterState = {
   open: boolean
   sections: ReadonlyMap<string, boolean>
+}
+
+/** A roster's entries, broken after each open section's entry: the roster row draws the
+ *  first run, and each later run follows the rows of the child that ended the one before. */
+export function nativeChatSubagentEntryRuns(
+  agents: readonly NativeChatSubagentEntry[],
+  sections: ReadonlyMap<string, boolean>
+): NativeChatSubagentEntry[][] {
+  let run: NativeChatSubagentEntry[] = []
+  const runs = [run]
+  for (const agent of agents) {
+    run.push(agent)
+    if (sections.get(agent.id) === true) {
+      run = []
+      runs.push(run)
+    }
+  }
+  return runs
 }
 
 export type NativeChatSubagentDisclosure = {

@@ -7,6 +7,7 @@ import { NativeChatResolutionReceipt } from './NativeChatResolutionReceipt'
 import { NativeChatWorkingStatus } from './NativeChatWorkingStatus'
 import { NativeChatTurnDiffRollup } from './NativeChatTurnDiffRollup'
 import { NativeChatSubagentSectionHead } from './NativeChatSubagentSectionHead'
+import { NativeChatSubagentEntries } from './NativeChatSubagentRun'
 import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sections'
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
@@ -59,6 +60,15 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           onSetOpen={context.subagentDisclosure.setSectionOpen}
         />
       </div>
+    )
+  }
+  if (slot.kind === 'subagent-entries') {
+    return (
+      <NativeChatSubagentEntries
+        agents={slot.agents}
+        sections={slot.sections}
+        onSetSectionOpen={context.subagentDisclosure.setSectionOpen}
+      />
     )
   }
   const { message, turnKey, status, receipt, turnDiff } = slot

@@ -5,9 +5,9 @@ import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-
 import type { NativeChatSubagentEntry } from '../../../../shared/native-chat-types'
 import { StatusDot } from './NativeChatSubagentRun'
 
-/** Names the subagent whose rows follow, and opens or closes them. Its state in
- *  words is on its roster entry; an agent no loaded roster names has no label or
- *  state to show, only that it is one. */
+/** Names the subagent whose rows follow, and opens or closes them, where no loaded
+ *  roster row holds its entry: its roster is off the page, or another subagent spawned
+ *  it. An agent no roster names has no label or state to show, only that it is one. */
 export function NativeChatSubagentSectionHead({
   agentId,
   entry,

@@ -109,19 +109,81 @@ describe("a subagent's rows in the transcript", () => {
     vi.restoreAllMocks()
   })
 
-  it("shows the conversation and none of the subagent's words until its section opens", () => {
+  it("shows the conversation and none of the subagent's words until its entry opens them", () => {
     renderList()
     expect(screen.getByText('Delegated; nothing to fix.')).toBeInTheDocument()
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
-    const entry = screen.getByRole('button', { name: /explore the lane/, expanded: false })
-    fireEvent.click(entry)
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
 
-    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
-    expect(
-      screen.getAllByRole('button', { name: /explore the lane/, expanded: true })
-    ).toHaveLength(2)
+    // Named once: its entry heads its rows, which come before the parent's answer.
+    expect(screen.getAllByText('explore the lane')).toHaveLength(1)
+    const entry = screen.getByRole('button', { name: /explore the lane/, expanded: true })
+    const said = screen.getByText('The PR is CLEAN.')
+    expect(entry.compareDocumentPosition(said)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(said.compareDocumentPosition(screen.getByText('Delegated; nothing to fix.'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+
+    fireEvent.click(entry)
+    expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
+    expect(screen.getByRole('button', { name: /explore the lane/, expanded: false })).toBeVisible()
+  })
+
+  it("draws an open agent's rows between its entry and the next one", () => {
+    const agents = [
+      { id: 'task-a', label: 'lane a', state: 'completed' as const },
+      { id: 'task-b', label: 'lane b', state: 'completed' as const },
+      { id: 'task-c', label: 'lane c', state: 'completed' as const }
+    ]
+    const items = [
+      itemsWith('completed', false)[0]!,
+      journalItem(
+        'spawn',
+        {
+          kind: 'message',
+          role: 'system',
+          blocks: [{ type: 'subagent-group', groupId: 'group-1', agents }]
+        },
+        2
+      ),
+      ...agents.map(({ id, label }, index) =>
+        journalItem(
+          `${id}-said`,
+          {
+            kind: 'message',
+            role: 'assistant',
+            blocks: [{ type: 'text', text: `Read ${label}.` }]
+          },
+          3 + index,
+          { agentId: id, producerKind: 'agent' }
+        )
+      )
+    ]
+    render(
+      <NativeChatMessageList
+        session={session(projectStructuredItemsToNativeChat(items))}
+        journalItems={items}
+        isWorking={false}
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Ran 3 subagents/ }))
+    fireEvent.click(screen.getByRole('button', { name: /lane b/ }))
+
+    const order = [
+      screen.getByRole('button', { name: /lane a/, expanded: false }),
+      screen.getByRole('button', { name: /lane b/, expanded: true }),
+      screen.getByText('Read lane b.'),
+      screen.getByRole('button', { name: /lane c/, expanded: false })
+    ]
+    for (const [index, node] of order.slice(1).entries()) {
+      expect(order[index]!.compareDocumentPosition(node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    }
+    expect(screen.queryByText('Read lane a.')).toBeNull()
+    expect(screen.getAllByText(/^lane [abc]$/)).toHaveLength(3)
   })
 
   it("still counts the subagent's edit in the turn, and reveals it inside its section", () => {
@@ -134,10 +196,7 @@ describe("a subagent's rows in the transcript", () => {
 
     expect(screen.getByText('Edited file')).toBeInTheDocument()
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
-    // Its entry in the roster's list and its section's head.
-    expect(
-      screen.getAllByRole('button', { name: /explore the lane/, expanded: true })
-    ).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /explore the lane/, expanded: true })).toBeVisible()
   })
 
   it('reveals an edit under a roster list the reader closed', () => {
@@ -185,6 +244,8 @@ describe("a subagent's rows in the transcript", () => {
   it('opens a working subagent while the session waits on it, and closes it once the parent moves on', () => {
     const { rerender } = render(listOf('working', true))
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /explore the lane/, expanded: true })).toBeVisible()
+    expect(screen.getAllByText('explore the lane')).toHaveLength(1)
     rerender(listOf('working'))
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
     // The closed roster still says the agent works.
@@ -193,9 +254,7 @@ describe("a subagent's rows in the transcript", () => {
 
   it("keeps the reader's choice over the frontier, in either direction", () => {
     const { rerender } = render(listOf('working', true))
-    // The open section opens its roster's list; its entry comes before its head.
-    const [entry] = screen.getAllByRole('button', { name: /explore the lane/, expanded: true })
-    fireEvent.click(entry!)
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: true }))
     rerender(listOf('working', true))
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
 

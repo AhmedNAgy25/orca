@@ -10,28 +10,20 @@
 import {
   isBackgroundTaskBlock,
   isSubagentGroupBlock,
-  isToolCallBlock,
-  type NativeChatMessage,
-  type NativeChatSubagentEntry
+  type NativeChatMessage
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
-import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-summary'
 import {
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
-import {
-  deriveNativeChatRowContent,
-  nativeChatRowRendersContent
-} from '../../../../shared/native-chat-row-content'
+import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
 import {
   estimateNativeChatRowHeight,
-  nativeChatRowContentMetrics,
-  NATIVE_CHAT_SUBAGENT_SECTION_HEAD_PX
+  nativeChatRowContentMetrics
 } from './native-chat-row-height-estimate'
 import type { NativeChatResolvedPrompt } from './native-chat-resolution-receipt'
 import type { NativeChatTurnDiff } from './native-chat-turn-diffs'
-import { compareMessages } from './native-chat-session-assembler'
 import {
   NO_NATIVE_CHAT_SUBAGENT_CHOICES,
   NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
@@ -40,22 +32,17 @@ import {
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
 import { nativeChatSubagentLiveSections } from './native-chat-subagent-live-frontier'
+import {
+  nativeChatSubagentSectionSlots,
+  type NativeChatSubagentEntriesSlot,
+  type NativeChatSubagentSectionSlot
+} from './native-chat-subagent-section-slots'
+import { nativeChatRowRendersProse, nativeChatRowSpeaksOrActs } from './native-chat-trailing-run'
 
-export type NativeChatTranscriptSlot = NativeChatMessageSlot | NativeChatSubagentSectionSlot
-
-/** The head of one subagent's section: it names whose rows follow it. */
-export type NativeChatSubagentSectionSlot = {
-  kind: 'subagent'
-  agentId: string
-  /** The conversation turn this head sits in, so the outline rail can place it. */
-  turnKey: string | undefined
-  /** The roster's entry for the agent; absent when no loaded roster names it. */
-  entry: NativeChatSubagentEntry | undefined
-  expanded: boolean
-  /** Sections this head sits inside; 0 is the conversation. */
-  depth: number
-  estimatedHeight: number
-}
+export type NativeChatTranscriptSlot =
+  | NativeChatMessageSlot
+  | NativeChatSubagentSectionSlot
+  | NativeChatSubagentEntriesSlot
 
 export type NativeChatMessageSlot = {
   kind: 'message'
@@ -78,7 +65,7 @@ export type NativeChatMessageSlot = {
   turnFolds: boolean
   turnDiff: NativeChatTurnDiff | undefined
   /** On a roster row: whether its list is open, and the subagents whose sections open
-   *  under it, each with whether it is open. A closed list draws none of them. */
+   *  under their entries, each with whether it is open. A closed list draws none of them. */
   subagentRoster: NativeChatSubagentRosterState | undefined
   /** Subagent sections this row sits inside; 0 is the conversation. */
   depth: number
@@ -107,26 +94,6 @@ export type NativeChatTranscriptSlotsInput = {
   subagentChoices?: NativeChatSubagentChoices
 }
 
-/** Whether a row moves its agent past the run above it. An approval's receipt
- *  decides a call of that run, which then runs, so it does not. */
-function speaksOrActs(
-  message: NativeChatMessage,
-  rendersProse: boolean,
-  receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
-): boolean {
-  return (
-    message.role !== 'user' &&
-    message.role !== 'reasoning' &&
-    receipts.get(message.id)?.kind !== 'approval' &&
-    (rendersProse || message.blocks.some(isToolCallBlock))
-  )
-}
-
-function rendersProse(message: NativeChatMessage): boolean {
-  const content = deriveNativeChatRowContent(message.blocks)
-  return content.markdown.length > 0 || content.hasImages
-}
-
 export function buildNativeChatTranscriptSlots(
   input: NativeChatTranscriptSlotsInput
 ): NativeChatTranscriptSlot[] {
@@ -150,7 +117,7 @@ export function buildNativeChatTranscriptSlots(
   const foldRows: NativeChatTurnFoldRow[] = messages.map((message, index) => ({
     turnKey: turnKeys[index],
     role: message.role,
-    rendersProse: rendersProse(message),
+    rendersProse: nativeChatRowRendersProse(message),
     // The raw blocks, not the renderable ones: a childless roster draws no row
     // and its plain-text twin is then the only record the spawn happened.
     outlivesTurn: message.blocks.some(
@@ -161,7 +128,7 @@ export function buildNativeChatTranscriptSlots(
   // live between its calls, and a run the agent has moved past is settled even
   // while its last call is still reporting.
   const trailingRunIndex = foldRows.findLastIndex((row, index) =>
-    speaksOrActs(messages[index]!, row.rendersProse, receipts)
+    nativeChatRowSpeaksOrActs(messages[index]!, row.rendersProse, receipts)
   )
   const settledTurnKeys = new Set(
     showTurnStatus
@@ -177,7 +144,7 @@ export function buildNativeChatTranscriptSlots(
   })
   const slots: NativeChatTranscriptSlot[] = []
   const live = nativeChatSubagentLiveSections(messages, sections, isWorking || lifecycleWorking)
-  const sectionSlots = subagentSectionSlots({ sections, choices, live, receipts, slots })
+  const sectionSlots = nativeChatSubagentSectionSlots({ sections, choices, live, receipts, slots })
   const pending = [...(sections.openAt.get(null) ?? [])]
   for (const [index, message] of messages.entries()) {
     sectionSlots.openBefore(pending, message, 0)
@@ -198,6 +165,7 @@ export function buildNativeChatTranscriptSlots(
     // opens a gap in the transcript.
     const drawsRow =
       receipt !== undefined || (!folded && nativeChatRowRendersContent(message.blocks))
+    const roster = sectionSlots.rosterAt(message.id)
     if (drawsRow || status !== undefined || turnDiff !== undefined) {
       slots.push({
         kind: 'message',
@@ -212,7 +180,7 @@ export function buildNativeChatTranscriptSlots(
         folded,
         turnFolds: turnKey !== undefined && foldableTurnKeys.has(turnKey),
         turnDiff,
-        subagentRoster: sectionSlots.rosterAt(message.id),
+        subagentRoster: roster,
         depth: 0,
         estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
           hasReceipt: receipt !== undefined,
@@ -222,135 +190,23 @@ export function buildNativeChatTranscriptSlots(
         })
       })
     }
-    sectionSlots.openAnchoredAt(message.id, 0, turnKey)
+    sectionSlots.openAnchoredAt(message, roster, turnKey)
   }
   sectionSlots.openBefore(pending, undefined, 0)
   return slots
 }
 
-/** Emits subagent sections into `slots`: one the session spawned after the roster
- *  row that names it, once open and unless the reader closed that row's list; any
- *  other's head where its first row happened, and its rows once open. A section is
- *  open while it is its running scope's live frontier (`live`); the reader's choice
- *  outranks that. A roster list is open while a section under it is, unless the
- *  reader chose otherwise. */
-function subagentSectionSlots({
-  sections,
-  choices,
-  live,
-  receipts,
-  slots
-}: {
-  sections: NativeChatSubagentSections
-  choices: NativeChatSubagentChoices
-  live: ReadonlySet<string>
-  receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
-  slots: NativeChatTranscriptSlot[]
-}) {
-  const isOpen = (agentId: string): boolean => choices.sections.get(agentId) ?? live.has(agentId)
-  const pushHead = (agentId: string, depth: number, turnKey: string | undefined): void => {
-    slots.push({
-      kind: 'subagent',
-      agentId,
-      turnKey,
-      entry: sections.entries.get(agentId),
-      expanded: isOpen(agentId),
-      depth,
-      estimatedHeight: NATIVE_CHAT_SUBAGENT_SECTION_HEAD_PX
-    })
-  }
-  /** `turnKey`: the turn the section is shown in. Its rows carry that one, not the
-   *  turn each was written in, so the outline rail lights where the reader is. */
-  const pushRows = (agentId: string, depth: number, turnKey: string | undefined): void => {
-    const rows = sections.rows.get(agentId) ?? []
-    // The agent's own frontier: its trailing run is live while the agent works.
-    const entry = sections.entries.get(agentId)
-    const working = entry !== undefined && normalizeSubagentState(entry.state) === 'working'
-    const trailing = rows.findLastIndex((row) =>
-      speaksOrActs(row.message, rendersProse(row.message), receipts)
-    )
-    const pending = [...(sections.openAt.get(agentId) ?? [])]
-    for (const [index, { message }] of rows.entries()) {
-      openBefore(pending, message, depth, { turnKey })
-      const receipt = receipts.get(message.id)
-      if (receipt === undefined && !nativeChatRowRendersContent(message.blocks)) {
-        continue
-      }
-      slots.push({
-        kind: 'message',
-        message,
-        turnKey,
-        activeTurnIsWorking: working,
-        trailingRun: index === trailing,
-        receipt,
-        status: undefined,
-        folded: false,
-        turnFolds: false,
-        turnDiff: undefined,
-        subagentRoster: undefined,
-        depth,
-        estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
-          hasReceipt: receipt !== undefined,
-          hasStatus: false,
-          hasTurnDiff: false
-        })
-      })
-    }
-    openBefore(pending, undefined, depth, { turnKey })
-  }
-  /** Heads, ahead of `message`, each pending section whose first row came before
-   *  it, with its rows when open; `undefined` flushes the rest. Inside a section
-   *  each sits in that section's turn; in the conversation, in its first row's. */
-  function openBefore(
-    pending: string[],
-    message: NativeChatMessage | undefined,
-    depth: number,
-    section?: { turnKey: string | undefined }
-  ) {
-    while (pending.length > 0) {
-      const agentId = pending[0]!
-      const first = sections.rows.get(agentId)?.[0]
-      if (
-        message !== undefined &&
-        first !== undefined &&
-        compareMessages(first.message, message) >= 0
-      ) {
-        return
-      }
-      pending.shift()
-      const turnKey = section ? section.turnKey : first?.turnKey
-      pushHead(agentId, depth, turnKey)
-      if (isOpen(agentId)) {
-        pushRows(agentId, depth + 1, turnKey)
-      }
-    }
-  }
-  return {
-    openBefore,
-    /** The open sections of the subagents a roster row names, in roster order. */
-    openAnchoredAt(messageId: string, depth: number, turnKey: string | undefined): void {
-      for (const agentId of sections.anchoredAt.get(messageId) ?? []) {
-        if (isOpen(agentId) && choices.rosters.get(messageId) !== false) {
-          pushHead(agentId, depth, turnKey)
-          pushRows(agentId, depth + 1, turnKey)
-        }
-      }
-    },
-    rosterAt(messageId: string): NativeChatSubagentRosterState | undefined {
-      const anchored = sections.anchoredAt.get(messageId)
-      return anchored === undefined
-        ? undefined
-        : {
-            open: choices.rosters.get(messageId) ?? anchored.some(isOpen),
-            sections: new Map(anchored.map((agentId) => [agentId, isOpen(agentId)]))
-          }
-    }
-  }
-}
-
-/** Stable key for a slot: its message id, or the agent whose section it heads. */
+/** Stable key for a slot: its message id, the agent whose section it heads, or its
+ *  roster row and first entry. */
 export function nativeChatSlotKey(slot: NativeChatTranscriptSlot): string {
-  return slot.kind === 'message' ? slot.message.id : `subagent-section:${slot.agentId}`
+  switch (slot.kind) {
+    case 'message':
+      return slot.message.id
+    case 'subagent':
+      return `subagent-section:${slot.agentId}`
+    case 'subagent-entries':
+      return `subagent-entries:${slot.rosterRowId}:${slot.agents[0]?.id}`
+  }
 }
 
 /** Slot index of a message id, or -1. Reveal targets arrive as ids because the

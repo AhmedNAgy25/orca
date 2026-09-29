@@ -24,7 +24,8 @@ function choose(
 
 /** The transcript's subagent sections, and the sections and roster lists the reader
  *  opened or closed by hand. Every other section is open only at its running scope's
- *  live frontier; every other roster list, while a section under it is open. */
+ *  live frontier; every other roster list, while that frontier or a reader's choice is
+ *  on one of its sections. */
 export function useNativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
   subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>,

@@ -13,6 +13,7 @@ import {
 import {
   buildNativeChatTranscriptSlots,
   nativeChatSlotKey,
+  type NativeChatMessageSlot,
   type NativeChatTranscriptSlot
 } from './native-chat-transcript-slots'
 import { nativeChatTurnDiffs } from './native-chat-turn-diffs'
@@ -99,13 +100,42 @@ function slotsOf(
   })
 }
 
-/** One line per slot: `>` per section it sits in, then the row id or `[agent]` for a head. */
+/** One line per thing drawn: `>` per section it sits in, then a row id, `•agent` for a
+ *  roster entry, or `[agent]` for a section head; ` open` when that agent's section is. */
 function outline(slots: readonly NativeChatTranscriptSlot[]): string[] {
-  return slots.map((slot) =>
-    slot.kind === 'message'
-      ? `${'>'.repeat(slot.depth)}${slot.message.id}`
-      : `${'>'.repeat(slot.depth)}[${slot.agentId}${slot.expanded ? ' open' : ''}]`
-  )
+  const entry = (agentId: string, open: boolean | undefined) => `•${agentId}${open ? ' open' : ''}`
+  return slots.flatMap((slot) => {
+    const indent = '>'.repeat(slot.depth)
+    switch (slot.kind) {
+      case 'message':
+        return [
+          `${indent}${slot.message.id}`,
+          ...entriesInRow(slot).map(([id, open]) => entry(id, open))
+        ]
+      case 'subagent':
+        return [`${indent}[${slot.agentId}${slot.expanded ? ' open' : ''}]`]
+      case 'subagent-entries':
+        return slot.agents.map(
+          (agent) => `${indent}${entry(agent.id, slot.sections.get(agent.id))}`
+        )
+    }
+  })
+}
+
+/** The entries a roster row draws: none while its list is closed, else through its first open one. */
+function entriesInRow(slot: NativeChatMessageSlot): [string, boolean][] {
+  const roster = slot.subagentRoster
+  const drawn: [string, boolean][] = []
+  for (const block of roster?.open ? slot.message.blocks : []) {
+    for (const agent of block.type === 'subagent-group' ? block.agents : []) {
+      const open = roster?.sections.get(agent.id) === true
+      drawn.push([agent.id, open])
+      if (open) {
+        return drawn
+      }
+    }
+  }
+  return drawn
 }
 
 function transcriptWith(state: NativeChatSubagentState): NativeChatMessage[] {
@@ -122,7 +152,7 @@ function transcriptWith(state: NativeChatSubagentState): NativeChatMessage[] {
 const OPEN_UNDER_ROSTER = [
   'ask',
   'spawn',
-  '[task-1 open]',
+  '•task-1 open',
   '>child-look',
   '>child-verdict',
   'answer'
@@ -141,12 +171,51 @@ describe("a subagent's rows live in its own section", () => {
     })
   })
 
-  it('opens them under the roster that names the agent, headed by its name', () => {
+  it('opens them under its own entry in the roster that names the agent, named nowhere else', () => {
     const slots = slotsOf(settled, { 'task-1': true })
     expect(outline(slots)).toEqual(OPEN_UNDER_ROSTER)
-    const head = slots[2]
-    expect(head?.kind === 'subagent' ? head.entry?.label : null).toBe('explore the lane')
+    expect(slots.filter((slot) => slot.kind !== 'message')).toEqual([])
     expect(new Set(slots.map(nativeChatSlotKey)).size).toBe(slots.length)
+  })
+
+  it("puts each open agent's rows under its own entry, and the entries after them below its rows", () => {
+    const fanOut = [
+      row('ask', say('review three lanes'), { role: 'user' }),
+      roster('spawn', [
+        ['task-a', 'lane a', 'completed'],
+        ['task-b', 'lane b', 'completed'],
+        ['task-c', 'lane c', 'completed']
+      ]),
+      row('a-look', say('Reading lane a.'), by('task-a')),
+      row('b-look', say('Reading lane b.'), by('task-b')),
+      row('c-look', say('Reading lane c.'), by('task-c')),
+      row('answer', say('All three are clean.'))
+    ]
+    expect(outline(slotsOf(fanOut, { 'task-b': true }))).toEqual([
+      'ask',
+      'spawn',
+      '•task-a',
+      '•task-b open',
+      '>b-look',
+      '•task-c',
+      'answer'
+    ])
+    const both = slotsOf(fanOut, { 'task-a': true, 'task-c': true })
+    expect(outline(both)).toEqual([
+      'ask',
+      'spawn',
+      '•task-a open',
+      '>a-look',
+      '•task-b',
+      '•task-c open',
+      '>c-look',
+      'answer'
+    ])
+    expect(new Set(both.map(nativeChatSlotKey)).size).toBe(both.length)
+    // The outline rail places the entries after an open section in the roster's turn.
+    expect(
+      both.flatMap((slot) => (slot.kind === 'subagent-entries' ? [slot.turnKey] : []))
+    ).toEqual(['ask'])
   })
 
   it("keeps the agent's own live frontier while the roster says it works", () => {
@@ -163,7 +232,7 @@ describe("a subagent's rows live in its own section", () => {
     ])
   })
 
-  it('places each section head in the turn it sits in, for the outline rail', () => {
+  it('places each section in the turn it sits in, for the outline rail', () => {
     const rows = [
       row('ask-1', say('first'), { role: 'user' }),
       row('stray', say('Unlisted.'), by('toolu_9')),
@@ -173,12 +242,16 @@ describe("a subagent's rows live in its own section", () => {
       row('child-look', say('Looking.'), by('task-1')),
       row('answer', say('Done.'))
     ]
-    const heads = slotsOf(rows, { 'task-1': true }).flatMap((slot) =>
-      slot.kind === 'subagent' ? [[slot.agentId, slot.turnKey]] : []
+    const sections = slotsOf(rows, { 'task-1': true }).flatMap((slot) =>
+      slot.kind === 'subagent'
+        ? [[slot.agentId, slot.turnKey]]
+        : slot.depth > 0 && slot.kind === 'message'
+          ? [[slot.message.id, slot.turnKey]]
+          : []
     )
-    expect(heads).toEqual([
+    expect(sections).toEqual([
       ['toolu_9', 'ask-1'],
-      ['task-1', 'ask-2']
+      ['child-look', 'ask-2']
     ])
   })
 
@@ -194,13 +267,16 @@ describe("a subagent's rows live in its own section", () => {
       row('reply-2', say('Running them.'))
     ]
     const turns = slotsOf(rows, { 'task-1': true, 'task-2': true }).map((slot) => [
-      slot.kind === 'message' ? slot.message.id : `[${slot.agentId}]`,
+      slot.kind === 'message'
+        ? slot.message.id
+        : slot.kind === 'subagent'
+          ? `[${slot.agentId}]`
+          : slot.agents.map((agent) => agent.id).join(),
       slot.turnKey
     ])
     expect(turns).toEqual([
       ['ask-1', 'ask-1'],
       ['spawn', 'ask-1'],
-      ['[task-1]', 'ask-1'],
       ['child-look', 'ask-1'],
       ['child-later', 'ask-1'],
       ['[task-2]', 'ask-1'],
@@ -240,7 +316,7 @@ describe("a subagent's rows live in its own section", () => {
     expect(outline(slotsOf(nested, { 'task-1': true }))).toEqual([
       'ask',
       'spawn',
-      '[task-1 open]',
+      '•task-1 open',
       '>child-look',
       '>child-verdict',
       '>[task-2]',
@@ -272,7 +348,7 @@ describe("a subagent's section is open while it is the session's live frontier",
     row('child-look', say('Looking at the diff.'), by('task-1')),
     row('child-verdict', say('The PR is CLEAN.'), by('task-1'))
   ]
-  const OPEN_AT_FRONTIER = ['ask', 'spawn', '[task-1 open]', '>child-look', '>child-verdict']
+  const OPEN_AT_FRONTIER = ['ask', 'spawn', '•task-1 open', '>child-look', '>child-verdict']
 
   it('opens while its roster is the newest thing the running session produced', () => {
     expect(outline(slotsOf(waiting('working'), {}, true))).toEqual(OPEN_AT_FRONTIER)
@@ -282,7 +358,7 @@ describe("a subagent's section is open while it is the session's live frontier",
 
   it('ignores a user row after the roster', () => {
     const rows = [...waiting('working'), row('follow-up', say('and?'), { role: 'user' })]
-    expect(outline(slotsOf(rows, {}, true)).slice(0, 3)).toEqual(['ask', 'spawn', '[task-1 open]'])
+    expect(outline(slotsOf(rows, {}, true)).slice(0, 3)).toEqual(['ask', 'spawn', '•task-1 open'])
   })
 
   it('closes once the parent produces anything newer, though the agent still works', () => {
@@ -293,7 +369,7 @@ describe("a subagent's section is open while it is the session's live frontier",
     ])
   })
 
-  it("opens a roster's list while a section under it is open, and a list the reader closed hides them", () => {
+  it("opens a roster's list while the frontier or the reader's choice is on one of its agents, and a list the reader closed hides them", () => {
     const rosterOf = (slots: NativeChatTranscriptSlot[]) =>
       slots.flatMap((slot) =>
         slot.kind === 'message' && slot.subagentRoster ? [slot.subagentRoster] : []
@@ -301,6 +377,18 @@ describe("a subagent's section is open while it is the session's live frontier",
     const live = slotsOf(waiting('working'), {}, true)
     expect(rosterOf(live)).toEqual([{ open: true, sections: new Map([['task-1', true]]) }])
     expect(rosterOf(slotsOf(waiting('working'))).map(({ open }) => open)).toEqual([false])
+    // The reader closed the agent from its entry: the list they used stays open.
+    expect(outline(slotsOf(waiting('working'), { 'task-1': false }, true))).toEqual([
+      'ask',
+      'spawn',
+      '•task-1'
+    ])
+    expect(outline(slotsOf(transcriptWith('completed'), { 'task-1': false }))).toEqual([
+      'ask',
+      'spawn',
+      '•task-1',
+      'answer'
+    ])
 
     const closed = slotsOf(waiting('working'), {}, true, { spawn: false })
     expect(outline(closed)).toEqual(['ask', 'spawn'])
@@ -324,7 +412,8 @@ describe("a subagent's section is open while it is the session's live frontier",
   it("keeps the reader's choice over the frontier, in either direction", () => {
     expect(outline(slotsOf(waiting('working'), { 'task-1': false }, true))).toEqual([
       'ask',
-      'spawn'
+      'spawn',
+      '•task-1'
     ])
     expect(outline(slotsOf(transcriptWith('working'), { 'task-1': true }, true))).toEqual(
       OPEN_UNDER_ROSTER
@@ -364,9 +453,13 @@ describe("a subagent's section is open while it is the session's live frontier",
 
 /** The sections a running session holds open, with no choice by the reader. */
 function opened(rows: NativeChatMessage[]): string[] {
-  return slotsOf(rows, {}, true).flatMap((slot) =>
-    slot.kind === 'subagent' && slot.expanded ? [slot.agentId] : []
-  )
+  return slotsOf(rows, {}, true).flatMap((slot) => {
+    if (slot.kind === 'subagent') {
+      return slot.expanded ? [slot.agentId] : []
+    }
+    const roster = slot.kind === 'message' && slot.subagentRoster?.open ? slot.subagentRoster : null
+    return Array.from(roster?.sections ?? []).flatMap(([agentId, open]) => (open ? [agentId] : []))
+  })
 }
 
 function collab(id: string, tool: string, receiverThreadIds: string[]): NativeChatMessage {
