@@ -17,7 +17,7 @@ import { nativeChatSubagentSections } from './native-chat-subagent-sections'
 import { nativeChatSubagentLiveSections } from './native-chat-subagent-live-frontier'
 
 // The live window the renderer draws sections from, through the real reducer: a
-// subagent's burst must not trim away the roster row that names its section.
+// section keeps its name and state whatever the window trims or never loaded.
 
 const child: AgentJournalProducerLinkage = { agentId: 'task-1', producerKind: 'agent' }
 
