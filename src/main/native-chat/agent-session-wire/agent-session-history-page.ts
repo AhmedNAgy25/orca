@@ -20,7 +20,8 @@ import {
   type AgentSessionHistoryDirection,
   type AgentSessionHistoryPage,
   type AgentSessionHistoryRequest,
-  type AgentSessionHistoryResult
+  type AgentSessionHistoryResult,
+  type AgentSessionSubagentRosterEntry
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { projectJournalBatch } from './agent-session-journal-batch'
@@ -32,6 +33,7 @@ import {
   oversizedHistoryItem,
   submissionBytesByItemId
 } from './agent-session-history-page-bounds'
+import { offPageSubagentRoster } from './agent-session-history-subagent-roster'
 
 export { AGENT_SESSION_HISTORY_MAX_PAGE_BYTES } from './agent-session-history-page-bounds'
 
@@ -115,7 +117,8 @@ export function readAgentSessionHistory(
       fallbackCursor: cursor ?? { epoch: snapshot.cursor.epoch, sequence: 0 },
       nextCursor: items[0]
         ? { epoch: snapshot.cursor.epoch, sequence: items[0].sequence }
-        : undefined
+        : undefined,
+      subagentRoster: offPageSubagentRoster(scoped, items)
     })
   }
 }
@@ -166,7 +169,8 @@ function buildHydrationPage(
     nextCursor: bounded.items[0]
       ? { epoch: snapshot.cursor.epoch, sequence: bounded.items[0].sequence }
       : undefined,
-    fence
+    fence,
+    subagentRoster: offPageSubagentRoster(snapshot.items, bounded.items)
   })
 }
 
@@ -283,6 +287,7 @@ function buildPage(input: {
   fallbackCursor: AgentJournalCursor
   nextCursor: AgentJournalCursor | undefined
   fence?: number
+  subagentRoster?: AgentSessionSubagentRosterEntry[]
 }): AgentSessionHistoryPage {
   const epoch = input.snapshot.cursor.epoch
   const pageItemIds = new Set(input.items.map((item) => item.itemId))
@@ -305,6 +310,7 @@ function buildPage(input: {
     },
     liveCursor: input.snapshot.cursor,
     hasOlder: input.hasOlder,
-    hasNewer: input.hasNewer
+    hasNewer: input.hasNewer,
+    ...(input.subagentRoster === undefined ? {} : { subagentRoster: input.subagentRoster })
   }
 }

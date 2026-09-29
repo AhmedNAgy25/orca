@@ -220,4 +220,31 @@ describe('subagent sections over the live retained window', () => {
       nativeChatSubagentSections(sectionsOf(plain).conversation, new Map())
     )
   })
+
+  it('names a section from the entries a page carries beside its items, and falls back without them', () => {
+    const page = snapshotPage([
+      item('own-2', 10, said('assistant', 'meanwhile')),
+      item('child-2', 11, said('assistant', 'step 2'), child)
+    ])
+    const open = (from: AgentSessionHistoryPage) =>
+      sectionsOf(
+        reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
+          type: 'history-page',
+          page: from
+        })
+      ).sections
+    const entry = { id: 'task-1', label: 'review the PR', state: 'working' as const }
+
+    const named = open({
+      ...page,
+      subagentRoster: [{ itemId: 'roster', sequence: 2, revision: 1, entry }]
+    })
+    expect(named.entries.get('task-1')).toEqual(entry)
+    expect(named.openAt.get(null)).toEqual(['task-1'])
+
+    // An older host sends no entries: the section still holds the rows, unnamed.
+    const unnamed = open(page)
+    expect(unnamed.entries.get('task-1')).toBeUndefined()
+    expect(unnamed.openAt.get(null)).toEqual(['task-1'])
+  })
 })

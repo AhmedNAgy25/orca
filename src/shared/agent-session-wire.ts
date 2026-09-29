@@ -31,6 +31,7 @@ import {
   type AgentSessionRecord
 } from './agent-session-record'
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
+import type { NativeChatSubagentEntry } from './native-chat-types'
 import type { StructuredAgentSessionProjectedStatus } from './structured-agent-session-projection'
 
 /** `agentSession.handoffStatus`. Named for the removed terminal handoff; released desktop clients
@@ -77,6 +78,16 @@ export type AgentSessionHistoryRequest = {
   limit?: number
 }
 
+/** A subagent named by a roster row the page does not carry, while its own rows are on it. */
+export type AgentSessionSubagentRosterEntry = {
+  /** The roster row naming it: the first that does. */
+  itemId: string
+  sequence: number
+  sequenceIndex?: number
+  revision: number
+  entry: NativeChatSubagentEntry
+}
+
 export type AgentSessionHistoryPage = {
   sessionId: string
   epoch: string
@@ -106,6 +117,9 @@ export type AgentSessionHistoryPage = {
   /** Host wall clock (ms epoch) when the page was read, so a client attaching mid-turn
    *  can anchor a live counter on the real start. Absent from older hosts. */
   hostNow?: number
+  /** Names the subagents with rows on the page whose roster row is older than it; bounded.
+   *  Absent from older hosts, and when every such roster row is on the page. */
+  subagentRoster?: AgentSessionSubagentRosterEntry[]
 }
 
 export type AgentSessionHistoryResult =

@@ -41,6 +41,25 @@ function said(text: string): AgentJournalItemBody {
   return { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text }] }
 }
 
+async function appendRoster(agentIds: string[]): Promise<void> {
+  ordinal += 1
+  await journal.appendItem(
+    { provider: 'codex', threadId: 'thread-1', turnId: 'turn-1', ordinal },
+    {
+      kind: 'message',
+      role: 'system',
+      blocks: [
+        {
+          type: 'subagent-group',
+          groupId: `group-${ordinal}`,
+          agents: agentIds.map((id) => ({ id, label: `run ${id}`, state: 'working' as const }))
+        }
+      ]
+    },
+    { fence: 1 }
+  )
+}
+
 async function append(texts: string[], linkage: AgentJournalProducerLinkage = {}): Promise<void> {
   for (const text of texts) {
     ordinal += 1
@@ -148,6 +167,47 @@ describe('a history page over a session with a subagent', () => {
   })
 })
 
+describe('a history page names the subagents whose roster row is older than it', () => {
+  it('names a subagent whose roster row is just above the opening page', async () => {
+    await append(['own-1'])
+    await appendRoster(['task-1'])
+    await append(['child-1'], child)
+    await append(named('own-', 2, 200))
+    await append(['child-2'], child)
+
+    const page = readAgentSessionHydrationPage(journal)
+
+    expect(textsOf(page)[0]).toBe('own-2')
+    expect(page.subagentRoster?.map((named) => [named.entry.id, named.entry.label])).toEqual([
+      ['task-1', 'run task-1']
+    ])
+  })
+
+  it('names nothing beside the items when the page carries the roster row', async () => {
+    await append(['own-1'])
+    await appendRoster(['task-1'])
+    await append(['child-1'], child)
+
+    expect(readAgentSessionHydrationPage(journal).subagentRoster).toBeUndefined()
+    expect(read({ direction: 'tail', limit: 5 }).subagentRoster).toBeUndefined()
+  })
+
+  it('names a bounded number of subagents', async () => {
+    const agents = named('task-', 1, 70)
+    await appendRoster(agents)
+    await append(['own-1'])
+    for (const agentId of agents) {
+      await append([`${agentId} says`], { agentId, producerKind: 'agent' })
+    }
+    await append(['own-2'])
+
+    const tail = read({ direction: 'tail', limit: 2 })
+
+    expect(textsOf(tail)[0]).toBe('own-1')
+    expect(tail.subagentRoster).toHaveLength(64)
+  })
+})
+
 describe('a history page over a session with no subagent rows', () => {
   it('serves exactly the newest rows per page, as before', async () => {
     await append(named('own-', 1, 23))
@@ -176,5 +236,6 @@ describe('a history page over a session with no subagent rows', () => {
 
     expect(textsOf(page)).toEqual(named('own-', 51, 200))
     expect(page.hasOlder).toBe(true)
+    expect(page).not.toHaveProperty('subagentRoster')
   })
 })

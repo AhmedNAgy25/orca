@@ -2,7 +2,8 @@
 //
 // Folded from every roster row and revision the client receives — pages, older pages, and
 // live batches, including revisions of roster rows the item window has trimmed or never
-// loaded — so a subagent's section keeps its name and state whatever the window holds.
+// loaded — and from the entries a page names beside its items for roster rows older than
+// it, so a subagent's section keeps its name and state whatever the window holds.
 // Rebuilt on every page that replaces the window, so nothing outlives an epoch or a
 // reconnect; a removed roster row takes its entries with it.
 
@@ -12,6 +13,7 @@ import {
   agentJournalItemPosition,
   compareAgentJournalPositions
 } from './agent-session-journal-position'
+import type { AgentSessionHistoryPage, AgentSessionSubagentRosterEntry } from './agent-session-wire'
 import { isSubagentGroupBlock, type NativeChatSubagentEntry } from './native-chat-types'
 
 /** One subagent as the first roster row naming it records it. */
@@ -34,7 +36,9 @@ const MAX_ROSTER_AGENTS = 512
 export function foldStructuredAgentSubagentRoster(
   roster: StructuredAgentSubagentRoster,
   items: readonly AgentJournalRenderItem[],
-  removedItemIds: readonly string[] = []
+  removedItemIds: readonly string[] = [],
+  /** A page's `subagentRoster`, absent from older hosts. */
+  pageEntries: readonly AgentSessionSubagentRosterEntry[] = []
 ): StructuredAgentSubagentRoster {
   let next: Map<string, StructuredAgentSubagentRosterEntry> | null = null
   const writable = (): Map<string, StructuredAgentSubagentRosterEntry> => (next ??= new Map(roster))
@@ -58,6 +62,14 @@ export function foldStructuredAgentSubagentRoster(
     ) {
       writable().set(candidate.entry.id, candidate)
     }
+  }
+  for (const named of pageEntries) {
+    take({
+      entry: named.entry,
+      rosterItemId: named.itemId,
+      rosterPosition: agentJournalItemPosition(named),
+      rosterRevision: named.revision
+    })
   }
   for (const item of items) {
     if (!isRootAgentJournalItem(item) || item.body.kind !== 'message') {
@@ -87,4 +99,17 @@ export function foldStructuredAgentSubagentRoster(
     return new Map(newest.slice(0, MAX_ROSTER_AGENTS))
   }
   return next
+}
+
+/** Folds a history page: its rows, its removals, and the entries it names beside them. */
+export function foldStructuredAgentSubagentRosterPage(
+  roster: StructuredAgentSubagentRoster | undefined,
+  page: AgentSessionHistoryPage
+): StructuredAgentSubagentRoster {
+  return foldStructuredAgentSubagentRoster(
+    roster ?? NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+    page.items,
+    page.removedItemIds,
+    page.subagentRoster
+  )
 }

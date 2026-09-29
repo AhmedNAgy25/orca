@@ -18,6 +18,7 @@ import { compareAgentJournalItems } from './agent-session-journal-position'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import {
   foldStructuredAgentSubagentRoster,
+  foldStructuredAgentSubagentRosterPage,
   NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
   type StructuredAgentSubagentRoster
 } from './structured-agent-session-subagent-roster'
@@ -113,10 +114,7 @@ function replacePage(
     retainedItemCap: Math.max(MAX_RETAINED_ITEMS, page.items.length),
     hasOlder: page.hasOlder,
     status: 'ready',
-    subagentRoster: foldStructuredAgentSubagentRoster(
-      NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
-      page.items
-    ),
+    subagentRoster: foldStructuredAgentSubagentRosterPage(undefined, page),
     activity: activity ?? null,
     ...(backgroundTasks !== undefined
       ? { backgroundTasks }
@@ -255,11 +253,7 @@ export function reduceStructuredAgentSession(
       items,
       retainedOwnItemLimit: Math.max(state.retainedOwnItemLimit, ownItemCount(items)),
       retainedItemCap: Math.max(state.retainedItemCap, items.length),
-      subagentRoster: foldStructuredAgentSubagentRoster(
-        state.subagentRoster ?? NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
-        action.page.items,
-        action.page.removedItemIds
-      ),
+      subagentRoster: foldStructuredAgentSubagentRosterPage(state.subagentRoster, action.page),
       submissions: mergeSubmissions(state.submissions, action.page.submissions, items),
       hasOlder: action.page.hasOlder,
       ...hostClockField(action.page.hostNow, receivedAt, state.hostClock)
