@@ -1,16 +1,21 @@
 // Which subagent sections a running scope holds open by default.
 //
-// A section opens only while the roster row naming its agent is the live frontier of a
-// running scope: nothing its spawner produced since, user rows aside. It stops as soon as
-// newer output supersedes that row, even while the agent still works; its roster keeps
-// showing that live state. The session is the outer scope; a subagent still working is a
-// scope of its own for the sections it spawned, and a settled one closes its scope. Derived
+// A scope's live frontier is the newest row its agent produced, user rows aside. A section
+// opens while that row is part of its agent's delegation: a call that spawns, waits on or
+// messages it, or the roster row that names it as the agent most recently added. A spawn
+// call naming no agent belongs to the roster announcing it. Anything newer supersedes the
+// delegation even while the agent still works; its roster keeps showing that live state.
+// The session is the outer scope; a subagent still working is a scope of its own for the
+// sections it spawned, and a settled one closes its scope. A delegation naming only agents
+// one subagent spawned is that subagent's output, wherever the host journaled it. Derived
 // every render, with no latch; the reader's own choice outranks it.
 
 import { compareAgentJournalPositions } from '../../../../shared/agent-session-journal-position'
 import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-summary'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import { compareMessages } from './native-chat-session-assembler'
+import { nativeChatSubagentDelegation } from './native-chat-subagent-delegation'
 import type { NativeChatSubagentSections } from './native-chat-subagent-sections'
 
 const NONE: ReadonlySet<string> = new Set()
@@ -29,33 +34,106 @@ export function nativeChatSubagentLiveSections(
   if (!scopeActive || sections.rows.size === 0) {
     return NONE
   }
+  // Each sectioned agent's scope: null for the session's, else the subagent that spawned it.
+  const scopeOf = new Map<string, string | null>()
+  for (const agentIds of sections.anchoredAt.values()) {
+    agentIds.forEach((agentId) => scopeOf.set(agentId, null))
+  }
+  for (const [scope, agentIds] of sections.openAt) {
+    agentIds.forEach((agentId) => scopeOf.set(agentId, scope))
+  }
+  const handedDown = handDownNestedDelegations(conversation, scopeOf)
   const live = new Set<string>()
-  const visit = (scopeRows: readonly NativeChatMessage[], members: readonly string[]): void => {
-    const frontier = scopeRows.findLast(isOutput)
-    for (const agentId of members) {
-      const roster = sections.rosters.get(agentId)
-      if (
-        roster !== undefined &&
-        (frontier === undefined ||
-          frontier.id === roster.rowId ||
-          (frontier.journalPosition !== undefined &&
-            roster.position !== undefined &&
-            compareAgentJournalPositions(frontier.journalPosition, roster.position) < 0))
-      ) {
-        live.add(agentId)
+  const visit = (scopeRows: readonly NativeChatMessage[], scope: string | null): void => {
+    const members =
+      scope === null
+        ? [...Array.from(sections.anchoredAt.values()).flat(), ...(sections.openAt.get(null) ?? [])]
+        : (sections.openAt.get(scope) ?? [])
+    const inScope = new Set(members)
+    const belongsHere = (agentId: string): boolean =>
+      !scopeOf.has(agentId) || scopeOf.get(agentId) === scope
+    const atFrontier = (): readonly string[] => {
+      for (let index = scopeRows.length - 1; index >= 0; index -= 1) {
+        const row = scopeRows[index]!
+        if (!isOutput(row) || (scope === null && handedDown.rowIds.has(row.id))) {
+          continue
+        }
+        const delegation = nativeChatSubagentDelegation(row)
+        if (delegation?.kind === 'spawn') {
+          continue
+        }
+        if (delegation === null) {
+          return []
+        }
+        if (delegation.kind === 'call') {
+          return delegation.agentIds.filter((agentId) => inScope.has(agentId))
+        }
+        const newest = delegation.agentIds.findLast(belongsHere)
+        return newest !== undefined && inScope.has(newest) ? [newest] : []
       }
+      // Nothing loaded since the newest roster naming this scope's agents.
+      const rostered = members.filter((agentId) => sections.rosters.has(agentId))
+      const newest = rostered.reduce<string | undefined>(
+        (best, agentId) =>
+          best === undefined || compareAddedAt(sections, agentId, best) > 0 ? agentId : best,
+        undefined
+      )
+      return newest === undefined ? [] : [newest]
+    }
+    atFrontier().forEach((agentId) => live.add(agentId))
+    for (const agentId of members) {
       const entry = sections.entries.get(agentId)
       if (entry !== undefined && normalizeSubagentState(entry.state) === 'working') {
-        visit(
-          (sections.rows.get(agentId) ?? []).map((row) => row.message),
-          sections.openAt.get(agentId) ?? []
-        )
+        const own = (sections.rows.get(agentId) ?? []).map((row) => row.message)
+        const extra = handedDown.byScope.get(agentId)
+        visit(extra ? [...own, ...extra].sort(compareMessages) : own, agentId)
       }
     }
   }
-  visit(conversation, [
-    ...Array.from(sections.anchoredAt.values()).flat(),
-    ...(sections.openAt.get(null) ?? [])
-  ])
+  visit(conversation, null)
   return live
+}
+
+/** The session's roster rows and calls whose agents one subagent spawned, by that subagent. */
+function handDownNestedDelegations(
+  conversation: readonly NativeChatMessage[],
+  scopeOf: ReadonlyMap<string, string | null>
+): { rowIds: ReadonlySet<string>; byScope: ReadonlyMap<string, readonly NativeChatMessage[]> } {
+  const rowIds = new Set<string>()
+  const byScope = new Map<string, NativeChatMessage[]>()
+  if (!Array.from(scopeOf.values()).some((scope) => scope !== null)) {
+    return { rowIds, byScope }
+  }
+  for (const message of conversation) {
+    const delegation = nativeChatSubagentDelegation(message)
+    if (delegation === null || delegation.kind === 'spawn') {
+      continue
+    }
+    const spawners = new Set(
+      delegation.agentIds.flatMap((agentId) =>
+        scopeOf.has(agentId) ? [scopeOf.get(agentId) ?? null] : []
+      )
+    )
+    const [spawner] = spawners
+    if (spawners.size === 1 && spawner !== undefined && spawner !== null) {
+      rowIds.add(message.id)
+      byScope.set(spawner, [...(byScope.get(spawner) ?? []), message])
+    }
+  }
+  return { rowIds, byScope }
+}
+
+/** Later roster first; within one roster, the agent whose rows began later. */
+function compareAddedAt(sections: NativeChatSubagentSections, a: string, b: string): number {
+  const at = (agentId: string) => sections.rosters.get(agentId)?.position
+  const [rosterA, rosterB] = [at(a), at(b)]
+  if (rosterA !== undefined && rosterB !== undefined) {
+    const byRoster = compareAgentJournalPositions(rosterA, rosterB)
+    if (byRoster !== 0) {
+      return byRoster
+    }
+  } else if (rosterA !== rosterB) {
+    return rosterA === undefined ? -1 : 1
+  }
+  return compareMessages(sections.rows.get(a)![0]!.message, sections.rows.get(b)![0]!.message)
 }

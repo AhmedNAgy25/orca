@@ -317,6 +317,117 @@ describe("a subagent's section is open while it is the session's live frontier",
     // A settled spawner closes its scope: nothing inside it is live.
     expect(grandchild(nested('completed', false))).toBe('>[task-2]')
   })
+
+  it("keeps the spawner open when the host journals its grandchild's roster as the session's row", () => {
+    const rows = [
+      row('ask', say('go'), { role: 'user' }),
+      roster('spawn', [['task-1', 'lead the review', 'working']]),
+      row('child-look', say('Delegating a read.'), by('task-1')),
+      roster('spawn-2', [['task-2', 'read one file', 'working']]),
+      row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1'))
+    ]
+    expect(opened(rows)).toEqual(['task-1', 'task-2'])
+    // The session's own output still supersedes it.
+    expect(opened([...rows, row('answer', say('Still waiting.'))])).toEqual([])
+  })
+})
+
+/** The sections a running session holds open, with no choice by the reader. */
+function opened(rows: NativeChatMessage[]): string[] {
+  return slotsOf(rows, {}, true).flatMap((slot) =>
+    slot.kind === 'subagent' && slot.expanded ? [slot.agentId] : []
+  )
+}
+
+function collab(id: string, tool: string, receiverThreadIds: string[]): NativeChatMessage {
+  const head = JSON.stringify({
+    type: 'collabAgentToolCall',
+    id,
+    tool,
+    status: 'inProgress',
+    senderThreadId: 'thread-root',
+    receiverThreadIds,
+    prompt: null,
+    agentsStates: {}
+  })
+  const frame = {
+    provider: 'codex',
+    kind: 'item:collabAgentToolCall',
+    payload: { head, byteLength: head.length, digest: 'digest', truncated: false }
+  }
+  return row(
+    id,
+    [{ type: 'text', text: 'codex · item:collabAgentToolCall', providerFrame: frame }],
+    {
+      role: 'system'
+    }
+  )
+}
+
+describe("a parent's spawn and wait calls are part of its subagents' delegation", () => {
+  // Claude: one roster row per turn, written at the first spawn and revised by the next. The
+  // second spawn call folds into the parent's text before it, a row drawn after the roster.
+  const claudeTurn = [
+    row('ask', say('review both lanes'), { role: 'user' }),
+    row('spawn-call-a', call('Agent')),
+    roster('spawn', [
+      ['task-a', 'lane a', 'working'],
+      ['task-b', 'lane b', 'working']
+    ]),
+    row('then', say('Now lane b.')),
+    row('spawn-call-b', [
+      { type: 'tool-call', name: 'Agent', input: {} },
+      { type: 'tool-result', output: 'agent launched' }
+    ]),
+    row('a-look', say('Reading lane a.'), by('task-a')),
+    row('b-look', say('Reading lane b.'), by('task-b'))
+  ]
+
+  it("keeps the newest of a turn's spawns open while the parent only spawns", () => {
+    expect(opened(claudeTurn)).toEqual(['task-b'])
+    // The roster itself at the frontier: its most recently added agent.
+    const rosterLast = claudeTurn.filter(({ id }) => id !== 'then' && id !== 'spawn-call-b')
+    expect(opened(rosterLast)).toEqual(['task-b'])
+  })
+
+  it('closes once the parent writes, or calls anything else', () => {
+    expect(opened([...claudeTurn, row('answer', say('Both lanes are running.'))])).toEqual([])
+    expect(opened([...claudeTurn, row('read', call('Read'))])).toEqual([])
+  })
+
+  // Codex: every spawn, wait or message names its agents by thread id.
+  const codexTurn = [
+    row('ask', say('review both lanes'), { role: 'user' }),
+    roster('spawn', [
+      ['task-a', 'lane a', 'working'],
+      ['task-b', 'lane b', 'working']
+    ]),
+    collab('spawn-call-a', 'spawnAgent', ['task-a']),
+    collab('spawn-call-b', 'spawnAgent', ['task-b']),
+    row('a-look', say('Reading lane a.'), by('task-a')),
+    row('b-look', say('Reading lane b.'), by('task-b'))
+  ]
+
+  it('opens the agent a spawn or a wait names, and each one a call names', () => {
+    expect(opened(codexTurn)).toEqual(['task-b'])
+    expect(opened([...codexTurn, collab('wait-a', 'wait', ['task-a'])])).toEqual(['task-a'])
+    expect(opened([...codexTurn, collab('wait-b', 'wait', ['task-b'])])).toEqual(['task-b'])
+    expect(opened([...codexTurn, collab('wait', 'wait', ['task-a', 'task-b'])])).toEqual([
+      'task-a',
+      'task-b'
+    ])
+  })
+
+  it('treats a call naming no agent as ordinary output', () => {
+    // A wait on whichever agent reports first names none.
+    expect(opened([...codexTurn, collab('wait-any', 'wait', [])])).toEqual([])
+  })
+
+  it('opens nothing for a transcript with no subagent linkage', () => {
+    const unlinked = claudeTurn.filter((message) => message.agentId === undefined)
+    expect(opened(unlinked)).toEqual([])
+    expect(outline(slotsOf(unlinked, {}, true))).toEqual(['ask', 'spawn-call-a', 'spawn', 'then'])
+  })
 })
 
 describe("a subagent's edits in its turn's changed files", () => {
