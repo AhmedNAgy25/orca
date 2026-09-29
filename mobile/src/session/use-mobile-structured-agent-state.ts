@@ -240,5 +240,20 @@ export function useMobileStructuredAgentState(args: {
       })
   }, [apply, client, loadingOlder, sessionId, sessionKey])
 
+  // A window of only a subagent's rows draws nothing, and an empty list cannot be scrolled
+  // to ask for more, so it reads back once from each such head.
+  const drawsNothingFrom =
+    state.status === 'ready' && state.hasOlder && !state.items.some(isRootAgentJournalItem)
+      ? `${sessionKey}:${state.epoch}:${state.items[0]?.sequence}`
+      : null
+  const readBackFromRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (drawsNothingFrom === null || loadingOlder || readBackFromRef.current === drawsNothingFrom) {
+      return
+    }
+    readBackFromRef.current = drawsNothingFrom
+    loadEarlier()
+  }, [drawsNothingFrom, loadEarlier, loadingOlder])
+
   return { state, stateRef, loadingOlder, loadEarlier }
 }

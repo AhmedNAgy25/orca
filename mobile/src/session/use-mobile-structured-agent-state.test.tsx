@@ -58,9 +58,12 @@ describe('useMobileStructuredAgentState older history', () => {
     renderer = null
   })
 
-  /** Mounts the hook on a session whose newest row is the session's own, at 1000,
-   *  with the host serving `older` by the cursor each read asks before. */
-  async function mountWithOlderPages(older: Record<number, AgentSessionHistoryPage>) {
+  /** Mounts the hook on a session whose newest rows are `newest` (by default one of the
+   *  session's own, at 1000), with the host serving `older` by the cursor each read asks before. */
+  async function mountWithOlderPages(
+    older: Record<number, AgentSessionHistoryPage | undefined>,
+    newest: AgentJournalRenderItem[] = [said(1_000)]
+  ) {
     let onFrame: ((value: unknown) => void) | null = null
     const historyCursors: number[] = []
     const sendRequest = vi.fn(async (method: string, params?: { cursor?: AgentJournalCursor }) => {
@@ -68,7 +71,11 @@ describe('useMobileStructuredAgentState older history', () => {
         return { ok: true, result: {} }
       }
       historyCursors.push(params.cursor.sequence)
-      return { ok: true, result: { ok: true, page: older[params.cursor.sequence] } }
+      const olderPage = older[params.cursor.sequence]
+      return {
+        ok: true,
+        result: olderPage ? { ok: true, page: olderPage } : { ok: false, reset: 'cursor_ahead' }
+      }
     })
     const subscribe = vi.fn(
       (_method: string, _params: unknown, frame: (value: unknown) => void) => {
@@ -100,10 +107,10 @@ describe('useMobileStructuredAgentState older history', () => {
         type: 'snapshot',
         sessionId: 'session-1',
         fence: 1,
-        page: page([said(1_000)], true)
+        page: page(newest, true)
       })
     })
-    await vi.waitFor(() => expect(hook.current!.state.hasOlder).toBe(true))
+    await vi.waitFor(() => expect(hook.current!.state.status).toBe('ready'))
     return { hook, historyCursors }
   }
 
@@ -132,5 +139,24 @@ describe('useMobileStructuredAgentState older history', () => {
     await vi.waitFor(() => expect(hook.current!.state.items[0]?.sequence).toBe(800))
     expect(historyCursors).toEqual([1_000])
     expect(hook.current!.state.hasOlder).toBe(true)
+  })
+
+  it("reads back on its own when the newest page holds only a subagent's rows", async () => {
+    const { hook, historyCursors } = await mountWithOlderPages(
+      { 800: page(range(1, 101), false) },
+      range(800, 1_000, 'task-1')
+    )
+
+    await vi.waitFor(() => expect(hook.current!.state.items[0]?.sequence).toBe(1))
+    expect(historyCursors).toEqual([800])
+  })
+
+  it('reads back once from a window that draws nothing when the read lands nothing', async () => {
+    const { hook, historyCursors } = await mountWithOlderPages({}, range(800, 1_000, 'task-1'))
+
+    await vi.waitFor(() => expect(historyCursors).toEqual([800]))
+    await vi.waitFor(() => expect(hook.current!.loadingOlder).toBe(false))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(historyCursors).toEqual([800])
   })
 })
