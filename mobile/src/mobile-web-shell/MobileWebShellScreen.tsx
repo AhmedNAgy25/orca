@@ -7,7 +7,8 @@ import {
   parseMobileWebShellLoadState
 } from '../../modules/orca-mobile-web-shell/src'
 import { HostRouteNoticeBanner } from '../components/HostRouteNoticeBanner'
-import { ProtocolBlockScreen } from '../components/ProtocolBlockScreen'
+import { blockRemedy, ProtocolBlockScreen } from '../components/ProtocolBlockScreen'
+import { useBlockedShellAppUpdate } from '../app-update/use-blocked-shell-app-update'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import type { BridgeInitRoute } from './bridge/bridge-envelope'
 import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
@@ -330,11 +331,15 @@ export function MobileWebShellScreen({
     }
   }, [reportShellFailure, unreadable])
 
+  const mobileUpdate = useBlockedShellAppUpdate(
+    state.kind === 'wall' ? blockRemedy(state.verdict) : null
+  )
+
   if (state.kind === 'native-route') {
     return fallback
   }
   if (state.kind === 'wall') {
-    return <ProtocolBlockScreen verdict={state.verdict} />
+    return <ProtocolBlockScreen verdict={state.verdict} mobileUpdate={mobileUpdate} />
   }
   if (state.kind === 'failed') {
     return <Failed state={state} onRetry={retry} />

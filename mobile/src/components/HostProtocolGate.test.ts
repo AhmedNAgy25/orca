@@ -37,16 +37,6 @@ const hostClient = vi.hoisted(() => ({
 vi.mock('../transport/client-context', () => ({
   useHostClient: () => hostClient.current
 }))
-// The wall's update checker: the real one imports expo-constants, an Expo global this test lacks.
-vi.mock('../app-update/app-update-runtime', () => ({
-  appUpdateChecker: { checkNow: () => Promise.resolve('failed') },
-  useAppUpdateState: () => ({
-    lastCheckedAt: null,
-    available: null,
-    dismissedVersion: null,
-    checking: false
-  })
-}))
 // Descriptor bookkeeping only; the real recorder reaches the native keychain through host-store.
 vi.mock('../transport/host-descriptor-recorder', () => ({
   recordHostDescriptorFromStatus: vi.fn()

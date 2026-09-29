@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-import { appUpdateChecker, useAppUpdateState } from '../app-update/app-update-runtime'
 import { openExternalLink } from '../platform/external-link'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
@@ -18,6 +16,8 @@ export type BlockedVerdict =
 
 type Props = {
   verdict: BlockedVerdict
+  /** The newest release the shell's checker knows; the page never has one (no checker there). */
+  mobileUpdate?: { version: string; url: string } | null
 }
 
 const DESKTOP_TOO_OLD_BODY =
@@ -25,9 +25,9 @@ const DESKTOP_TOO_OLD_BODY =
 
 /** What clears the wall. `refresh-bundle` is the one that no store can: the cached workspace is
  *  older than this host's client floor, so a download fixes it and an app update does not. */
-type BlockRemedy = 'update-mobile' | 'update-desktop' | 'refresh-bundle'
+export type BlockRemedy = 'update-mobile' | 'update-desktop' | 'refresh-bundle'
 
-function blockRemedy(verdict: BlockedVerdict): BlockRemedy {
+export function blockRemedy(verdict: BlockedVerdict): BlockRemedy {
   switch (verdict.reason) {
     case 'mobile-too-old':
     case 'bundle-shell-too-old':
@@ -67,16 +67,9 @@ function blockBody(verdict: BlockedVerdict, remedy: BlockRemedy, storeName: stri
   return DESKTOP_TOO_OLD_BODY
 }
 
-export function ProtocolBlockScreen({ verdict }: Props) {
+export function ProtocolBlockScreen({ verdict, mobileUpdate = null }: Props) {
   const router = useRouteHandoff()
   const remedy = blockRemedy(verdict)
-  // The wall ignores dismissal: this release is the way past it, not a nudge the user declined.
-  const { available } = useAppUpdateState()
-  useEffect(() => {
-    if (remedy === 'update-mobile') {
-      void appUpdateChecker.checkNow()
-    }
-  }, [remedy])
   // Why: Android APKs ship through GitHub Releases until a Play Store listing exists.
   const mobileUpdateTarget =
     Platform.OS === 'ios'
@@ -87,8 +80,8 @@ export function ProtocolBlockScreen({ verdict }: Props) {
     remedy === 'refresh-bundle'
       ? null
       : remedy === 'update-mobile'
-        ? available
-          ? { label: `Get Orca ${available.version}`, url: available.url }
+        ? mobileUpdate
+          ? { label: `Get Orca ${mobileUpdate.version}`, url: mobileUpdate.url }
           : { label: mobileUpdateTarget.label, url: mobileUpdateTarget.url }
         : { label: 'Open GitHub Releases', url: RELEASES_URL }
 
