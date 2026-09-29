@@ -72,6 +72,9 @@ export function splitStreamDataForNdjson(
   return splitOversizedStreamDataForNdjson(sessionId, data, maxLineBytes, sequenceChars)
 }
 
+/**
+ * Splits oversized stream data into surrogate-safe chunks bounded by NDJSON line byte limits.
+ */
 function splitOversizedStreamDataForNdjson(
   sessionId: string,
   data: string,
