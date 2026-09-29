@@ -1,9 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
-import { isSubagentGroupBlock, type NativeChatSubagentEntry } from '../../shared/native-chat-types'
+import {
+  isBackgroundTaskBlock,
+  isSubagentGroupBlock,
+  type NativeChatSubagentEntry
+} from '../../shared/native-chat-types'
 import type { AgentSessionJournal } from '../native-chat/agent-session-journal/journal-store'
 import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
@@ -21,6 +25,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.useRealTimers()
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
 })
@@ -164,6 +169,16 @@ const groupRows = (journal: AgentSessionJournal): GroupRow[] =>
 const rowsListing = (journal: AgentSessionJournal, agentId: string): GroupRow[] =>
   groupRows(journal).filter((row) => row.agents.some((agent) => agent.id === agentId))
 
+/** Every task a background-task row names. */
+const backgroundTaskIds = (journal: AgentSessionJournal): string[] =>
+  journal
+    .snapshot()
+    .items.flatMap((item) =>
+      item.body.kind === 'message'
+        ? item.body.blocks.flatMap((block) => (isBackgroundTaskBlock(block) ? [block.taskId] : []))
+        : []
+    )
+
 /** Every id any spawn-group row names: what a transcript can put a name on. */
 const rosterIds = (journal: AgentSessionJournal): Set<string> =>
   new Set(groupRows(journal).flatMap((row) => row.agents.map((agent) => agent.id)))
@@ -304,9 +319,11 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     await second.exit()
   })
 
-  it('leaves a child the earlier run lost contact with as it was, until an announcement resumes it', async () => {
+  it('takes Claude’s verdict on a child the earlier run lost contact with, and reopens it on an announcement', async () => {
     // The provider exited while its backgrounded child still ran, so the roster said contact was
     // lost. The next run is told the child did not finish, works on its own, then messages it.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
     const journal = await openJournal()
     const first = acquire(journal)
     first.translator.handle(userTurn('turn-a'))
@@ -325,7 +342,11 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     expect(lost?.agents).toEqual([
       expect.objectContaining({ id: 'agent-a', state: 'unverifiable' })
     ])
+    const lostAt = lost?.agents[0]?.settledAt
+    expect(lostAt).toBe(1_000_000)
 
+    // The restart comes much later: that is not when the child stopped.
+    vi.setSystemTime(5_000_000)
     const second = acquire(journal)
     second.translator.handle(userTurn('turn-b'))
     second.translator.handle(
@@ -341,8 +362,14 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     second.translator.handle(toolCall('bash-1', 'toolu_bash_1', 'Bash', { command: 'git status' }))
     second.translator.handle(toolResult('bashed-1', 'toolu_bash_1', 'clean'))
     await second.settle()
-    // Only an announcement revises what the earlier run left; reading it wrote nothing.
-    expect(rowsListing(journal, 'agent-a')).toEqual([lost])
+    // The child's own row takes the verdict, keeping when that run lost it; no second row names it.
+    expect(rowsListing(journal, 'agent-a')).toEqual([
+      expect.objectContaining({
+        groupId: 'claude-session:turn-a',
+        agents: [expect.objectContaining({ id: 'agent-a', state: 'stopped', settledAt: lostAt })]
+      })
+    ])
+    expect(backgroundTaskIds(journal)).toEqual([])
 
     second.translator.handle(
       toolCall('resume-a', 'toolu_message_a', 'SendMessage', { to: 'agent-a', message: 'resume' })

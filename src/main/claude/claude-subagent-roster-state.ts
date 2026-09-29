@@ -19,7 +19,9 @@ export type TrackedEntry = {
   attempt: number
   /** Inherited from a row an earlier provider run journaled, and not announced in
    *  this run yet. That run's calls are unknown here, so any announcement is a new
-   *  invocation, and only an announcement reopens what that run settled. */
+   *  invocation, and only an announcement reopens what that run settled. Any other
+   *  frame can still give that run's outcome, such as Claude's "didn't finish before
+   *  the previous session ended". */
   invokedInEarlierRun: boolean
 }
 
@@ -47,7 +49,8 @@ export function applyClaudeSubagentInvocation(
   }
   if (tracked.invokedInEarlierRun) {
     if (!frame.announcement) {
-      return false
+      // A verdict on that run, not an invocation of this one; the latch still guards it.
+      return true
     }
     reopen(tracked, frame)
     if (frame.toolUseId) {

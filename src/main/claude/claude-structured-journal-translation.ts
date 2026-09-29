@@ -110,6 +110,7 @@ export function createClaudeJournalTranslator(
   const backgroundTasks = new ClaudeBackgroundTaskRows({
     sink: deps.sink,
     isForwardedParentTool: (toolUseId) => toolOrigins.has(toolUseId),
+    rosteredByEarlierRun: (taskId) => journaled.groupOf(taskId) !== null,
     // A typed task row is provider output: journaling one must open a resumed
     // turn, or the session shows the row while reading idle.
     openOutputTurn: (frame, observedAt) =>

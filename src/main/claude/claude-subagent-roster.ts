@@ -317,7 +317,10 @@ export class ClaudeSubagentRoster {
     if (change.state && canReplaceSubagentState(tracked.entry.state, change.state)) {
       next.entry.state = change.state
       if (isTerminalSubagentState(change.state)) {
-        next.entry.settledAt = this.now()
+        // An earlier run's child ended with that run, so this verdict says how, not when.
+        next.entry.settledAt = tracked.invokedInEarlierRun
+          ? (tracked.entry.settledAt ?? this.now())
+          : this.now()
       }
     }
     group.entries.set(id, next)
