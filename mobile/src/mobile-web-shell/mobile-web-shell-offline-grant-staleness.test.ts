@@ -303,8 +303,8 @@ describe('an offline cold start after a grant edit arrived under a wall', () => 
 
     const walled = await mountRoute(fileSystem)
     expect(walled.state()).toMatchObject({ kind: 'wall' })
-    // Only the open's recency touch, so not even the pending half of a swap is on disk.
-    expect(fileSystem.writes.slice(settled).filter((path) => path !== 'hosts.json')).toEqual([])
+    // Nothing was written at all, so not even the pending half of a swap is on disk.
+    expect(fileSystem.writes).toHaveLength(settled)
     expect(storedRouteGrants(fileSystem)).toEqual([{ pathname: ROUTE_PATTERN, grants: GRANTS_A }])
     await walled.unmount()
 

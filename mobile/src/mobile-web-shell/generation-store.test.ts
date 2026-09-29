@@ -297,15 +297,33 @@ describe('generation store', () => {
     expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 10 }))
   })
 
-  it('returns the generation when opening it cannot write the recency index', async () => {
+  it('keeps the previous index when an open cannot write the new one', async () => {
     const fs = createFakeFileSystem()
     let clock = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
+    const other = deriveHostCacheKey('other')
     await activate(store, HOST)
-    fs.failWritesAt('hosts.json')
+    await activate(store, other)
+    fs.failWritesAt('hosts.json.tmp')
 
     expect((await store.readActiveGeneration(HOST))?.buildId).toBe(BUILD)
-    expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 1 }))
+    expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 1, [other]: 2 }))
+  })
+
+  it('rewrites the index on an open only when the host is not already the newest', async () => {
+    const fs = createFakeFileSystem()
+    let clock = 0
+    const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
+    const [older, newest] = hostKeys(2)
+    await activate(store, older)
+    await activate(store, newest)
+    const before = { text: fs.text('hosts.json'), writes: fs.writes.length }
+
+    expect((await store.readActiveGeneration(newest))?.buildId).toBe(BUILD)
+    expect({ text: fs.text('hosts.json'), writes: fs.writes.length }).toEqual(before)
+
+    expect((await store.readActiveGeneration(older))?.buildId).toBe(BUILD)
+    expect(JSON.parse(fs.text('hosts.json') ?? '{}')).toEqual({ [older]: 3, [newest]: 2 })
   })
 
   it('keeps an opened host the most recent across a backward clock jump', async () => {
@@ -542,7 +560,7 @@ describe('generation store', () => {
   it('returns the activation even when the recency index cannot be written', async () => {
     const fs = createFakeFileSystem()
     const store = createGenerationStore({ fileSystem: fs })
-    fs.failWritesAt('hosts.json')
+    fs.failWritesAt('hosts.json.tmp')
 
     const staged = await store.stageGeneration(HOST, buildResult({}))
     const active = await store.commitGeneration(staged)

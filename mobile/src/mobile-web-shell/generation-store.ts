@@ -22,6 +22,7 @@ import {
 const GENERATIONS_DIRECTORY_NAME = 'generations'
 const STAGING_DIRECTORY_NAME = 'tmp'
 const HOST_INDEX_FILE_NAME = 'hosts.json'
+const HOST_INDEX_STAGING_NAME = 'hosts.json.tmp'
 
 /** Six hosts, least recently opened or activated evicted. */
 export const MAX_CACHED_HOSTS = 6
@@ -102,12 +103,12 @@ export function createGenerationStore(options: {
 
   async function writeHostIndex(index: ReadonlyMap<string, number>): Promise<void> {
     // Recency, not truth: a full disk here must not turn an activation that is already on disk
-    // into a thrown commit, and the next activation rewrites the whole index anyway.
+    // into a thrown commit, and the next activation rewrites the whole index anyway. Staged then
+    // renamed, so a kill mid-write leaves the old index or none, never a torn one.
+    const staged = joinUri(fs.rootUri, HOST_INDEX_STAGING_NAME)
     await fs
-      .writeText(
-        joinUri(fs.rootUri, HOST_INDEX_FILE_NAME),
-        JSON.stringify(Object.fromEntries(index))
-      )
+      .writeText(staged, JSON.stringify(Object.fromEntries(index)))
+      .then(() => fs.moveFile(staged, joinUri(fs.rootUri, HOST_INDEX_FILE_NAME)))
       .catch(() => undefined)
   }
 
@@ -285,7 +286,8 @@ export function createGenerationStore(options: {
     // An open is use, so a daily host downloaded long ago is not evicted first. No eviction pass:
     // the host count did not change.
     const index = active === null ? null : await readHostIndex()
-    if (index !== null) {
+    // Already newest is the common single-host case, so no native write on every open.
+    if (index !== null && index.get(hostKey) !== Math.max(...index.values())) {
       await writeHostIndex(stampRecency(index, hostKey))
     }
     return active
