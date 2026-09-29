@@ -7,6 +7,7 @@
 // names — its spawn is on an older page, or it was never announced — opens where its
 // first row happened, in the conversation.
 
+import type { AgentJournalPosition } from '../../../../shared/agent-session-journal-types'
 import {
   isSubagentGroupBlock,
   type NativeChatMessage,
@@ -15,11 +16,19 @@ import {
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
 import { compareMessages } from './native-chat-session-assembler'
 
+/** Where the roster row naming a subagent sits in the journal. */
+export type NativeChatSubagentRosterPlace = {
+  rowId: string
+  position: AgentJournalPosition | undefined
+}
+
 export type NativeChatSubagentSections = {
   /** Each subagent's own rows, by its id. */
   rows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
   /** The entry of the first conversation roster naming each subagent. */
   entries: ReadonlyMap<string, NativeChatSubagentEntry>
+  /** The roster row each entry came from. */
+  rosters: ReadonlyMap<string, NativeChatSubagentRosterPlace>
   /** Roster row id → the subagents whose sections open under it, in roster order. */
   anchoredAt: ReadonlyMap<string, readonly string[]>
   /** Every other subagent, by the section it opens in (null: the conversation), in
@@ -32,6 +41,7 @@ export type NativeChatSubagentSections = {
 export const NO_NATIVE_CHAT_SUBAGENT_SECTIONS: NativeChatSubagentSections = {
   rows: new Map(),
   entries: new Map(),
+  rosters: new Map(),
   anchoredAt: new Map(),
   openAt: new Map(),
   pathOf: new Map()
@@ -46,7 +56,7 @@ export function nativeChatSubagentSections(
     return NO_NATIVE_CHAT_SUBAGENT_SECTIONS
   }
   const entries = new Map<string, NativeChatSubagentEntry>()
-  const rosterOf = new Map<string, string>()
+  const rosters = new Map<string, NativeChatSubagentRosterPlace>()
   for (const message of conversation) {
     for (const block of message.blocks) {
       if (!isSubagentGroupBlock(block)) {
@@ -55,7 +65,7 @@ export function nativeChatSubagentSections(
       for (const agent of block.agents) {
         if (!entries.has(agent.id) && rows.has(agent.id)) {
           entries.set(agent.id, agent)
-          rosterOf.set(agent.id, message.id)
+          rosters.set(agent.id, { rowId: message.id, position: message.journalPosition })
         }
       }
     }
@@ -96,13 +106,13 @@ export function nativeChatSubagentSections(
     inScope.sort((a, b) => compareMessages(firstRow(a), firstRow(b)))
   }
   const anchoredAt = new Map<string, string[]>()
-  for (const [agentId, rosterId] of rosterOf) {
+  for (const [agentId, { rowId }] of rosters) {
     if (scopes.get(agentId) === null) {
-      const anchored = anchoredAt.get(rosterId)
+      const anchored = anchoredAt.get(rowId)
       if (anchored) {
         anchored.push(agentId)
       } else {
-        anchoredAt.set(rosterId, [agentId])
+        anchoredAt.set(rowId, [agentId])
       }
     }
   }
@@ -124,7 +134,7 @@ export function nativeChatSubagentSections(
       pathOf.set(row.message.id, path)
     }
   }
-  return { rows, entries, anchoredAt, openAt, pathOf }
+  return { rows, entries, rosters, anchoredAt, openAt, pathOf }
 }
 
 /** Every subagent's rows in transcript order: apart from the merge below, so an

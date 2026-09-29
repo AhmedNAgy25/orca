@@ -36,6 +36,7 @@ import {
   NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
+import { nativeChatSubagentLiveSections } from './native-chat-subagent-live-frontier'
 
 export type NativeChatTranscriptSlot = NativeChatMessageSlot | NativeChatSubagentSectionSlot
 
@@ -175,7 +176,8 @@ export function buildNativeChatTranscriptSlots(
     expandedTurnKeys
   })
   const slots: NativeChatTranscriptSlot[] = []
-  const sectionSlots = subagentSectionSlots({ sections, sectionChoices, receipts, slots })
+  const live = nativeChatSubagentLiveSections(messages, sections, isWorking || lifecycleWorking)
+  const sectionSlots = subagentSectionSlots({ sections, sectionChoices, live, receipts, slots })
   const pending = [...(sections.openAt.get(null) ?? [])]
   for (const [index, message] of messages.entries()) {
     sectionSlots.openBefore(pending, message, 0)
@@ -230,16 +232,18 @@ const NO_SECTION_CHOICES: ReadonlyMap<string, boolean> = new Map()
 
 /** Emits subagent sections into `slots`: one the session spawned after the roster
  *  row that names it, once open; any other's head where its first row happened,
- *  and its rows once open. A section is open while its agent works and closed once
- *  it settles, like the turn's own live run; the reader's choice outranks both. */
+ *  and its rows once open. A section is open while it is its running scope's live
+ *  frontier (`live`); the reader's choice outranks that. */
 function subagentSectionSlots({
   sections,
   sectionChoices,
+  live,
   receipts,
   slots
 }: {
   sections: NativeChatSubagentSections
   sectionChoices: ReadonlyMap<string, boolean>
+  live: ReadonlySet<string>
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
   slots: NativeChatTranscriptSlot[]
 }) {
@@ -247,7 +251,7 @@ function subagentSectionSlots({
     const entry = sections.entries.get(agentId)
     return entry !== undefined && normalizeSubagentState(entry.state) === 'working'
   }
-  const isOpen = (agentId: string): boolean => sectionChoices.get(agentId) ?? isLive(agentId)
+  const isOpen = (agentId: string): boolean => sectionChoices.get(agentId) ?? live.has(agentId)
   const pushHead = (agentId: string, depth: number, turnKey: string | undefined): void => {
     slots.push({
       kind: 'subagent',

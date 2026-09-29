@@ -66,7 +66,8 @@ function sectionsOf(rows: NativeChatMessage[]) {
 /** `choices`: the sections the reader opened (true) or closed (false) by hand. */
 function slotsOf(
   rows: NativeChatMessage[],
-  choices: Record<string, boolean> = {}
+  choices: Record<string, boolean> = {},
+  isWorking = false
 ): NativeChatTranscriptSlot[] {
   const { conversation, sections } = sectionsOf(rows)
   let turn: string | undefined
@@ -86,7 +87,7 @@ function slotsOf(
     turnDiffs: new Map(),
     showTurnStatus: true,
     expandedTurnKeys: new Set(),
-    isWorking: false,
+    isWorking,
     lifecycleWorking: false,
     subagentSections: sections,
     subagentSectionChoices: new Map(Object.entries(choices))
@@ -143,7 +144,7 @@ describe("a subagent's rows live in its own section", () => {
   })
 
   it("keeps the agent's own live frontier while the roster says it works", () => {
-    const live = slotsOf(transcriptWith('working')).filter(
+    const live = slotsOf(transcriptWith('working'), { 'task-1': true }).filter(
       (slot) => slot.kind === 'message' && slot.trailingRun
     )
     expect(
@@ -186,7 +187,7 @@ describe("a subagent's rows live in its own section", () => {
       row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1')),
       row('reply-2', say('Running them.'))
     ]
-    const turns = slotsOf(rows, { 'task-2': true }).map((slot) => [
+    const turns = slotsOf(rows, { 'task-1': true, 'task-2': true }).map((slot) => [
       slot.kind === 'message' ? slot.message.id : `[${slot.agentId}]`,
       slot.turnKey
     ])
@@ -257,52 +258,64 @@ describe("a subagent's rows live in its own section", () => {
   })
 })
 
-describe("a live subagent's section is open while it works", () => {
-  it('opens while the agent works and closes once it settles', () => {
-    expect(outline(slotsOf(transcriptWith('working')))).toEqual(OPEN_UNDER_ROSTER)
-    expect(outline(slotsOf(transcriptWith('completed')))).toEqual(['ask', 'spawn', 'answer'])
+describe("a subagent's section is open while it is the session's live frontier", () => {
+  // The parent waits on the agent: nothing it said or did comes after the roster.
+  const waiting = (state: NativeChatSubagentState) => [
+    row('ask', say('review the PR'), { role: 'user' }),
+    roster('spawn', [['task-1', 'explore the lane', state]]),
+    row('child-look', say('Looking at the diff.'), by('task-1')),
+    row('child-verdict', say('The PR is CLEAN.'), by('task-1'))
+  ]
+  const OPEN_AT_FRONTIER = ['ask', 'spawn', '[task-1 open]', '>child-look', '>child-verdict']
+
+  it('opens while its roster is the newest thing the running session produced', () => {
+    expect(outline(slotsOf(waiting('working'), {}, true))).toEqual(OPEN_AT_FRONTIER)
+    // A settled agent still at the frontier stays open until the parent moves on.
+    expect(outline(slotsOf(waiting('completed'), {}, true))).toEqual(OPEN_AT_FRONTIER)
   })
 
-  it('stays closed while it works once the reader closed it', () => {
-    expect(outline(slotsOf(transcriptWith('working'), { 'task-1': false }))).toEqual([
+  it('ignores a user row after the roster', () => {
+    const rows = [...waiting('working'), row('follow-up', say('and?'), { role: 'user' })]
+    expect(outline(slotsOf(rows, {}, true)).slice(0, 3)).toEqual(['ask', 'spawn', '[task-1 open]'])
+  })
+
+  it('closes once the parent produces anything newer, though the agent still works', () => {
+    expect(outline(slotsOf(transcriptWith('working'), {}, true))).toEqual([
       'ask',
       'spawn',
       'answer'
     ])
   })
 
-  it('stays open after it settles once the reader opened it', () => {
-    expect(outline(slotsOf(transcriptWith('completed'), { 'task-1': true }))).toEqual(
+  it('stays closed while the session is not running', () => {
+    expect(outline(slotsOf(waiting('working')))).toEqual(['ask', 'spawn'])
+  })
+
+  it("keeps the reader's choice over the frontier, in either direction", () => {
+    expect(outline(slotsOf(waiting('working'), { 'task-1': false }, true))).toEqual([
+      'ask',
+      'spawn'
+    ])
+    expect(outline(slotsOf(transcriptWith('working'), { 'task-1': true }, true))).toEqual(
       OPEN_UNDER_ROSTER
     )
   })
 
-  it("opens a live grandchild inside its open spawner's section, and only while it works", () => {
-    const nested = (grandchild: NativeChatSubagentState) => [
+  it("opens a grandchild at its working spawner's frontier, and not once the spawner moves on or settles", () => {
+    const nested = (spawner: NativeChatSubagentState, spawnerMovesOn: boolean) => [
       row('ask', say('go'), { role: 'user' }),
-      roster('spawn', [
-        ['task-1', 'lead the review', 'working'],
-        ['task-2', 'read one file', grandchild]
-      ]),
+      roster('spawn', [['task-1', 'lead the review', spawner]]),
       row('child-look', say('Delegating a read.'), by('task-1')),
+      roster('spawn-2', [['task-2', 'read one file', 'working']]),
       row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1')),
-      row('child-last', say('Wrapping up.'), by('task-1'))
+      ...(spawnerMovesOn ? [row('child-last', say('Reading another.'), by('task-1'))] : [])
     ]
-    expect(outline(slotsOf(nested('working')))).toEqual([
-      'ask',
-      'spawn',
-      '[task-1 open]',
-      '>child-look',
-      '>[task-2 open]',
-      '>>grandchild-read',
-      '>child-last'
-    ])
-    expect(outline(slotsOf(nested('completed'))).slice(4)).toEqual(['>[task-2]', '>child-last'])
-    // Its section is its spawner's to hold, so its roster entry opens nothing.
-    const spawn = slotsOf(nested('working'))[1]
-    expect(spawn?.kind === 'message' ? spawn.subagentSections : null).toEqual(
-      new Map([['task-1', true]])
-    )
+    const grandchild = (rows: NativeChatMessage[]) =>
+      outline(slotsOf(rows, { 'task-1': true }, true)).find((line) => line.includes('task-2'))
+    expect(grandchild(nested('working', false))).toBe('>[task-2 open]')
+    expect(grandchild(nested('working', true))).toBe('>[task-2]')
+    // A settled spawner closes its scope: nothing inside it is live.
+    expect(grandchild(nested('completed', false))).toBe('>[task-2]')
   })
 })
 

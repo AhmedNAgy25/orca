@@ -148,8 +148,8 @@ function SubagentElapsed({
 /** One spawn group: how many children are working, their settled verdict, and
  *  the tokens they consumed. Each child is one entry here; the child's own rows
  *  are never the conversation's. A child the session spawned shows them in a
- *  section below this row, open while it works and closed once it settles; its
- *  entry is where the reader overrides that.
+ *  section below this row, open while this row is the running session's newest
+ *  output; its entry is where the reader overrides that.
  *
  *  Every state is drawn exactly as the journal recorded it. Turn state is NOT
  *  consulted: `spawn_agent` children outlive the turn that spawned them and keep

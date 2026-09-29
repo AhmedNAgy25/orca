@@ -27,7 +27,7 @@ function journalItem(
 
 const child: AgentJournalProducerLinkage = { agentId: 'task-1', producerKind: 'agent' }
 const patch = '@@ -1 +1 @@\n-before\n+after'
-const itemsWith = (state: NativeChatSubagentState): AgentJournalRenderItem[] => [
+const itemsWith = (state: NativeChatSubagentState, answered: boolean): AgentJournalRenderItem[] => [
   journalItem(
     'ask',
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Review it' }] },
@@ -64,24 +64,29 @@ const itemsWith = (state: NativeChatSubagentState): AgentJournalRenderItem[] => 
     4,
     child
   ),
-  journalItem(
-    'answer',
-    {
-      kind: 'message',
-      role: 'assistant',
-      blocks: [{ type: 'text', text: 'Delegated; nothing to fix.' }]
-    },
-    5
-  )
+  ...(answered
+    ? [
+        journalItem(
+          'answer',
+          {
+            kind: 'message',
+            role: 'assistant',
+            blocks: [{ type: 'text', text: 'Delegated; nothing to fix.' }]
+          },
+          5
+        )
+      ]
+    : [])
 ]
 
-function listOf(state: NativeChatSubagentState): React.JSX.Element {
-  const items = itemsWith(state)
+/** `waiting`: the session runs and has produced nothing since the roster. */
+function listOf(state: NativeChatSubagentState, waiting = false): React.JSX.Element {
+  const items = itemsWith(state, !waiting)
   return (
     <NativeChatMessageList
       session={session(projectStructuredItemsToNativeChat(items))}
       journalItems={items}
-      isWorking={false}
+      isWorking={waiting}
       expandSignal={false}
       fontScale={1}
     />
@@ -130,22 +135,24 @@ describe("a subagent's rows in the transcript", () => {
     ).toBeInTheDocument()
   })
 
-  it('opens a working subagent on its own and closes it once it settles', () => {
-    const { rerender } = render(listOf('working'))
+  it('opens a working subagent while the session waits on it, and closes it once the parent moves on', () => {
+    const { rerender } = render(listOf('working', true))
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
-    rerender(listOf('completed'))
+    rerender(listOf('working'))
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
+    // The closed roster still says the agent works.
+    expect(screen.getByRole('button', { name: /Kicked off 1 subagent/ })).toBeInTheDocument()
   })
 
-  it("keeps the reader's choice over the agent's state, in either direction", () => {
-    const { rerender } = render(listOf('working'))
+  it("keeps the reader's choice over the frontier, in either direction", () => {
+    const { rerender } = render(listOf('working', true))
     fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: true }))
-    rerender(listOf('working'))
+    rerender(listOf('working', true))
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Kicked off 1 subagent/ }))
     fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
-    rerender(listOf('completed'))
+    rerender(listOf('working'))
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
   })
 })

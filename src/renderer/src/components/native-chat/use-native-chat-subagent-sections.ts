@@ -11,7 +11,7 @@ import {
 const NO_CHOICES: ReadonlyMap<string, boolean> = new Map()
 
 /** The transcript's subagent sections, and the ones the reader opened or closed by
- *  hand. Everything else follows its agent: open while it works, closed once it settles. */
+ *  hand. Everything else is open only at its running scope's live frontier. */
 export function useNativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
   subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
