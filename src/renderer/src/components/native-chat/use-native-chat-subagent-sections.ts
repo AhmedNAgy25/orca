@@ -3,6 +3,7 @@ import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
 import { chooseNativeChatExpanded } from './native-chat-expanded-keys'
 import {
+  nativeChatSubagentRowsInOrder,
   nativeChatSubagentSections,
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
@@ -16,6 +17,8 @@ export function useNativeChatSubagentSections(
   subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
 ): {
   sections: NativeChatSubagentSections
+  /** Every subagent row in transcript order; kept while only the conversation changes. */
+  subagentRowsInOrder: readonly NativeChatSubagentRow[]
   subagentSectionChoices: ReadonlyMap<string, boolean>
   setSubagentSectionOpen: (agentId: string, open: boolean) => void
   /** Opens the sections a row sits in, so a reveal of that row can land. */
@@ -24,6 +27,10 @@ export function useNativeChatSubagentSections(
   const sections = useMemo(
     () => nativeChatSubagentSections(conversation, subagentRows),
     [conversation, subagentRows]
+  )
+  const subagentRowsInOrder = useMemo(
+    () => nativeChatSubagentRowsInOrder(subagentRows),
+    [subagentRows]
   )
   const [subagentSectionChoices, setChoices] = useState(NO_CHOICES)
   const setSubagentSectionOpen = useCallback((agentId: string, open: boolean) => {
@@ -37,5 +44,11 @@ export function useNativeChatSubagentSections(
       )
     )
   }, [])
-  return { sections, subagentSectionChoices, setSubagentSectionOpen, openSubagentSections }
+  return {
+    sections,
+    subagentRowsInOrder,
+    subagentSectionChoices,
+    setSubagentSectionOpen,
+    openSubagentSections
+  }
 }

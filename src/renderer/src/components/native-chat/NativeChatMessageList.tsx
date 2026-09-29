@@ -28,10 +28,7 @@ import {
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
-import {
-  nativeChatRowsInTranscriptOrder,
-  nativeChatSubagentRowsInOrder
-} from './native-chat-subagent-sections'
+import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
 import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
 import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
@@ -143,6 +140,7 @@ export function NativeChatMessageList({
   }, [journalItems, projection.conversation])
   const {
     sections: subagentSections,
+    subagentRowsInOrder,
     subagentSectionChoices,
     setSubagentSectionOpen,
     openSubagentSections
@@ -166,10 +164,6 @@ export function NativeChatMessageList({
       return currentTurnKey
     })
   }, [messages])
-  const subagentRowsInOrder = useMemo(
-    () => nativeChatSubagentRowsInOrder(projection.subagentRows),
-    [projection.subagentRows]
-  )
   const turnDiffs = useMemo(() => {
     if (!journalItems) {
       return new Map<string, NativeChatTurnDiff>()
