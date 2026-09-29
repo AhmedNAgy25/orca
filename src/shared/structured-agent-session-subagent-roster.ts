@@ -1,0 +1,90 @@
+// Every subagent the session's rosters have named, by agent id, as this client heard it.
+//
+// Folded from every roster row and revision the client receives — pages, older pages, and
+// live batches, including revisions of roster rows the item window has trimmed or never
+// loaded — so a subagent's section keeps its name and state whatever the window holds.
+// Rebuilt on every page that replaces the window, so nothing outlives an epoch or a
+// reconnect; a removed roster row takes its entries with it.
+
+import type { AgentJournalPosition, AgentJournalRenderItem } from './agent-session-journal-types'
+import { isRootAgentJournalItem } from './agent-session-journal-producer'
+import {
+  agentJournalItemPosition,
+  compareAgentJournalPositions
+} from './agent-session-journal-position'
+import { isSubagentGroupBlock, type NativeChatSubagentEntry } from './native-chat-types'
+
+/** One subagent as the first roster row naming it records it. */
+export type StructuredAgentSubagentRosterEntry = {
+  entry: NativeChatSubagentEntry
+  rosterItemId: string
+  rosterPosition: AgentJournalPosition
+  rosterRevision: number
+}
+
+export type StructuredAgentSubagentRoster = ReadonlyMap<string, StructuredAgentSubagentRosterEntry>
+
+export const NO_STRUCTURED_AGENT_SUBAGENT_ROSTER: StructuredAgentSubagentRoster = new Map()
+
+/** Far above any one session's subagents; the oldest-named go first past it. */
+const MAX_ROSTER_AGENTS = 512
+
+/** Folds roster rows into `roster`, returning it unchanged when nothing it holds changed. The
+ *  first roster naming an agent wins, as sections read it; that row's newer revisions update it. */
+export function foldStructuredAgentSubagentRoster(
+  roster: StructuredAgentSubagentRoster,
+  items: readonly AgentJournalRenderItem[],
+  removedItemIds: readonly string[] = []
+): StructuredAgentSubagentRoster {
+  let next: Map<string, StructuredAgentSubagentRosterEntry> | null = null
+  const writable = (): Map<string, StructuredAgentSubagentRosterEntry> => (next ??= new Map(roster))
+  if (removedItemIds.length > 0) {
+    const removed = new Set(removedItemIds)
+    for (const [agentId, named] of roster) {
+      if (removed.has(named.rosterItemId)) {
+        writable().delete(agentId)
+      }
+    }
+  }
+  const take = (candidate: StructuredAgentSubagentRosterEntry): void => {
+    const held = (next ?? roster).get(candidate.entry.id)
+    const order = held
+      ? compareAgentJournalPositions(candidate.rosterPosition, held.rosterPosition)
+      : -1
+    if (
+      order < 0 ||
+      (held?.rosterItemId === candidate.rosterItemId &&
+        candidate.rosterRevision > held.rosterRevision)
+    ) {
+      writable().set(candidate.entry.id, candidate)
+    }
+  }
+  for (const item of items) {
+    if (!isRootAgentJournalItem(item) || item.body.kind !== 'message') {
+      continue
+    }
+    for (const block of item.body.blocks) {
+      if (!isSubagentGroupBlock(block)) {
+        continue
+      }
+      for (const entry of block.agents) {
+        take({
+          entry,
+          rosterItemId: item.itemId,
+          rosterPosition: agentJournalItemPosition(item),
+          rosterRevision: item.revision
+        })
+      }
+    }
+  }
+  if (next === null) {
+    return roster
+  }
+  if (next.size > MAX_ROSTER_AGENTS) {
+    const newest = [...next].sort(([, a], [, b]) =>
+      compareAgentJournalPositions(b.rosterPosition, a.rosterPosition)
+    )
+    return new Map(newest.slice(0, MAX_ROSTER_AGENTS))
+  }
+  return next
+}

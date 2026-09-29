@@ -62,6 +62,7 @@ type NativeChatNavigationRequest =
 export function NativeChatMessageList({
   session,
   journalItems,
+  subagentRoster,
   railOutline = null,
   isVisible = true,
   isWorking,
@@ -79,6 +80,8 @@ export function NativeChatMessageList({
 }: {
   session: NativeChatLiveSession
   journalItems?: readonly AgentJournalRenderItem[]
+  /** Every subagent the session's rosters named, whether or not its roster row is loaded. */
+  subagentRoster?: Parameters<typeof useNativeChatSubagentSections>[2]
   /** User messages older than the loaded window, from the host's outline. */
   railOutline?: readonly NativeChatRailOutlineEntry[] | null
   isVisible?: boolean
@@ -144,7 +147,7 @@ export function NativeChatMessageList({
     subagentSectionChoices,
     setSubagentSectionOpen,
     openSubagentSections
-  } = useNativeChatSubagentSections(messages, projection.subagentRows)
+  } = useNativeChatSubagentSections(messages, projection.subagentRows, subagentRoster)
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
   const showTypingIndicator = showTurnStatus

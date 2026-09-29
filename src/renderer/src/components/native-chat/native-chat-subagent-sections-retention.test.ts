@@ -14,6 +14,7 @@ import {
 } from '../../../../shared/structured-agent-session-reducer'
 import { compareMessages } from './native-chat-session-assembler'
 import { nativeChatSubagentSections } from './native-chat-subagent-sections'
+import { nativeChatSubagentLiveSections } from './native-chat-subagent-live-frontier'
 
 // The live window the renderer draws sections from, through the real reducer: a
 // subagent's burst must not trim away the roster row that names its section.
@@ -47,9 +48,9 @@ const rosterBody: AgentJournalItemBody = {
   ]
 }
 
-function snapshot(items: AgentJournalRenderItem[]): StructuredAgentSessionState {
+function snapshotPage(items: AgentJournalRenderItem[]): AgentSessionHistoryPage {
   const newest = items.at(-1)?.sequence ?? 0
-  const page: AgentSessionHistoryPage = {
+  return {
     sessionId: 'session-a',
     epoch: 'epoch-a',
     direction: 'tail',
@@ -65,40 +66,58 @@ function snapshot(items: AgentJournalRenderItem[]): StructuredAgentSessionState 
     hasOlder: false,
     hasNewer: false
   }
+}
+
+function snapshot(items: AgentJournalRenderItem[]): StructuredAgentSessionState {
   return reduceStructuredAgentSession(EMPTY_STRUCTURED_AGENT_SESSION, {
     type: 'event',
-    event: { type: 'snapshot', sessionId: 'session-a', fence: 1, page }
+    event: { type: 'snapshot', sessionId: 'session-a', fence: 1, page: snapshotPage(items) }
   })
 }
 
+/** Live batches of `size` items each; `cursor` defaults to each batch's newest item. */
 function stream(
   state: StructuredAgentSessionState,
-  items: AgentJournalRenderItem[]
+  items: AgentJournalRenderItem[],
+  size = 1,
+  cursor?: number
 ): StructuredAgentSessionState {
-  return items.reduce(
-    (current, next) =>
-      reduceStructuredAgentSession(current, {
-        type: 'event',
-        event: {
-          type: 'batch',
-          sessionId: 'session-a',
-          batch: {
-            cursor: { epoch: 'epoch-a', sequence: next.sequence },
-            items: [next],
-            removedItemIds: [],
-            submissions: []
-          }
+  let current = state
+  for (let start = 0; start < items.length; start += size) {
+    const batch = items.slice(start, start + size)
+    current = reduceStructuredAgentSession(current, {
+      type: 'event',
+      event: {
+        type: 'batch',
+        sessionId: 'session-a',
+        batch: {
+          cursor: { epoch: 'epoch-a', sequence: cursor ?? batch.at(-1)!.sequence },
+          items: batch,
+          removedItemIds: [],
+          submissions: []
         }
-      }),
-    state
-  )
+      }
+    })
+  }
+  return current
 }
 
 function sectionsOf(state: StructuredAgentSessionState) {
   const messages = projectStructuredItemsToNativeChat(state.items)
   const { conversation, subagentRows } = projectNativeChatTranscript(messages, compareMessages)
-  return { conversation, sections: nativeChatSubagentSections(conversation, subagentRows) }
+  return {
+    conversation,
+    sections: nativeChatSubagentSections(conversation, subagentRows, state.subagentRoster)
+  }
 }
+
+const opening = () =>
+  snapshot([item('prompt', 1, said('user', 'review the PR')), item('roster', 2, rosterBody)])
+
+// Past the every-agent cap, so the burst trims the prompt and the roster row.
+const longBurst = Array.from({ length: 4_200 }, (_, index) =>
+  item(`child-${index}`, index + 3, said('assistant', `step ${index}`), child)
+)
 
 describe('subagent sections over the live retained window', () => {
   it("keeps a working subagent's section named, under its roster, through a long burst", () => {
@@ -136,5 +155,69 @@ describe('subagent sections over the live retained window', () => {
     expect(conversation[0]?.id).toBe('own-0')
     expect(sections.rows.has('task-1')).toBe(false)
     expect(sections.openAt.get(null)).toBeUndefined()
+  })
+
+  it('keeps a section named and live after a burst trims the roster row naming it', () => {
+    const { conversation, sections } = sectionsOf(stream(opening(), longBurst, 100))
+
+    expect(conversation).toEqual([])
+    expect(sections.anchoredAt.size).toBe(0)
+    expect(sections.openAt.get(null)).toEqual(['task-1'])
+    expect(sections.entries.get('task-1')?.label).toBe('review the PR')
+    // The parent has produced nothing since, so the section is still its live frontier.
+    expect(nativeChatSubagentLiveSections(conversation, sections, true)).toEqual(
+      new Set(['task-1'])
+    )
+  })
+
+  it("takes a trimmed roster row's revision, though the row is outside the window", () => {
+    const trimmed = stream(opening(), longBurst, 100)
+    const settled: AgentJournalRenderItem = {
+      ...item('roster', 2, {
+        kind: 'message',
+        role: 'system',
+        blocks: [
+          {
+            type: 'subagent-group',
+            groupId: 'group-1',
+            agents: [{ id: 'task-1', label: 'review the PR', state: 'completed' }]
+          }
+        ]
+      }),
+      revision: 2
+    }
+
+    const after = stream(trimmed, [settled], 1, 4_203)
+
+    expect(after.items.some((next) => next.itemId === 'roster')).toBe(false)
+    expect(sectionsOf(after).sections.entries.get('task-1')?.state).toBe('completed')
+  })
+
+  it('forgets every name on an epoch reset', () => {
+    const named = stream(opening(), longBurst.slice(0, 3))
+    expect(named.subagentRoster?.size).toBe(1)
+    const reset = reduceStructuredAgentSession(named, {
+      type: 'event',
+      event: {
+        type: 'reset',
+        sessionId: 'session-a',
+        fence: 1,
+        reset: 'epoch_changed',
+        page: { ...snapshotPage([item('fresh', 1, said('user', 'again'))]), epoch: 'epoch-b' }
+      }
+    })
+
+    expect(reset.subagentRoster?.size).toBe(0)
+  })
+
+  it('names nothing in a transcript without subagents', () => {
+    const plain = stream(snapshot([item('prompt', 1, said('user', 'hi'))]), [
+      item('reply', 2, said('assistant', 'hello'))
+    ])
+
+    expect(plain.subagentRoster?.size).toBe(0)
+    expect(sectionsOf(plain).sections).toEqual(
+      nativeChatSubagentSections(sectionsOf(plain).conversation, new Map())
+    )
   })
 })

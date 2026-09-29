@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
+import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { chooseNativeChatExpanded } from './native-chat-expanded-keys'
 import {
   nativeChatSubagentRowsInOrder,
@@ -14,7 +15,8 @@ const NO_CHOICES: ReadonlyMap<string, boolean> = new Map()
  *  hand. Everything else is open only at its running scope's live frontier. */
 export function useNativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
-  subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
+  subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>,
+  roster?: StructuredAgentSubagentRoster
 ): {
   sections: NativeChatSubagentSections
   /** Every subagent row in transcript order; kept while only the conversation changes. */
@@ -25,8 +27,8 @@ export function useNativeChatSubagentSections(
   openSubagentSections: (agentIds: readonly string[]) => void
 } {
   const sections = useMemo(
-    () => nativeChatSubagentSections(conversation, subagentRows),
-    [conversation, subagentRows]
+    () => nativeChatSubagentSections(conversation, subagentRows, roster),
+    [conversation, roster, subagentRows]
   )
   const subagentRowsInOrder = useMemo(
     () => nativeChatSubagentRowsInOrder(subagentRows),

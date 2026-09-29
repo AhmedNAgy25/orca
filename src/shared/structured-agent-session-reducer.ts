@@ -16,6 +16,11 @@ import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { compareAgentJournalItems } from './agent-session-journal-position'
 import { readAgentJournalTurn } from './agent-session-turn-record'
+import {
+  foldStructuredAgentSubagentRoster,
+  NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+  type StructuredAgentSubagentRoster
+} from './structured-agent-session-subagent-roster'
 
 /** The last host clock sample: `hostNow - receivedAt` is the client's skew from the host,
  *  which is what lets a client attaching mid-turn anchor its live counter on the real start. */
@@ -46,6 +51,9 @@ export type StructuredAgentSessionState = {
   activity?: AgentSessionTurnActivity | null
   /** Absent until a frame from a host that stamps `hostNow` has been applied. */
   hostClock?: StructuredAgentHostClock
+  /** Every subagent a roster row this client received named, by agent id; not trimmed with
+   *  `items`. Absent until a page has been applied. */
+  subagentRoster?: StructuredAgentSubagentRoster
   /** Bumped per live batch that leaves a turn row's newest revision outside the window
    *  (dropped or trimmed), so a whole-journal answer derived from turn rows is asked for again. */
   unloadedTurnRevisions?: number
@@ -105,6 +113,10 @@ function replacePage(
     retainedItemCap: Math.max(MAX_RETAINED_ITEMS, page.items.length),
     hasOlder: page.hasOlder,
     status: 'ready',
+    subagentRoster: foldStructuredAgentSubagentRoster(
+      NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+      page.items
+    ),
     activity: activity ?? null,
     ...(backgroundTasks !== undefined
       ? { backgroundTasks }
@@ -243,6 +255,11 @@ export function reduceStructuredAgentSession(
       items,
       retainedOwnItemLimit: Math.max(state.retainedOwnItemLimit, ownItemCount(items)),
       retainedItemCap: Math.max(state.retainedItemCap, items.length),
+      subagentRoster: foldStructuredAgentSubagentRoster(
+        state.subagentRoster ?? NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+        action.page.items,
+        action.page.removedItemIds
+      ),
       submissions: mergeSubmissions(state.submissions, action.page.submissions, items),
       hasOlder: action.page.hasOlder,
       ...hostClockField(action.page.hostNow, receivedAt, state.hostClock)
@@ -269,6 +286,12 @@ export function reduceStructuredAgentSession(
     event.backgroundTasks !== undefined ? event.backgroundTasks : state.backgroundTasks
   const activity = event.activity !== undefined ? event.activity : state.activity
   const liveItems = liveItemsWithinWindow(state, event.batch.items)
+  // Every roster revision, the window's or not: a trimmed roster row keeps its sequence.
+  const subagentRoster = foldStructuredAgentSubagentRoster(
+    state.subagentRoster ?? NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+    event.batch.items,
+    event.batch.removedItemIds
+  )
   const journalUnchanged =
     liveItems.length === 0 &&
     event.batch.removedItemIds.length === 0 &&
@@ -276,6 +299,7 @@ export function reduceStructuredAgentSession(
   if (
     event.batch.cursor.sequence === state.cursor?.sequence &&
     journalUnchanged &&
+    subagentRoster === (state.subagentRoster ?? NO_STRUCTURED_AGENT_SUBAGENT_ROSTER) &&
     (event.fence === undefined || event.fence === state.fence) &&
     (event.commands === undefined || event.commands === state.commands) &&
     backgroundTaskStatesEqual(backgroundTasks, state.backgroundTasks) &&
@@ -302,6 +326,7 @@ export function reduceStructuredAgentSession(
     cursor: event.batch.cursor,
     fence: event.fence ?? state.fence,
     items,
+    subagentRoster,
     // A trim leaves older items behind the cursor, so paging must stay offered.
     hasOlder: items.length < merged.length ? true : state.hasOlder,
     submissions:

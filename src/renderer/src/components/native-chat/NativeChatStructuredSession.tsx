@@ -272,6 +272,7 @@ export function NativeChatStructuredSession(
           <NativeChatMessageList
             session={session}
             journalItems={controller.journalItems}
+            subagentRoster={controller.subagentRoster}
             railOutline={controller.railOutline}
             isVisible={props.isVisible}
             isWorking={controller.isWorking}

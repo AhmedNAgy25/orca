@@ -2,10 +2,12 @@
 //
 // A subagent's rows are not the conversation's: they sit in a section of their own,
 // keyed by the agent id its roster entry and its rows share. One the session spawned
-// opens under the roster row that names it. One another subagent spawned opens
-// inside that subagent's section, where its first row happened. One no loaded roster
-// names — its spawn is on an older page, or it was never announced — opens where its
-// first row happened, in the conversation.
+// opens under the loaded roster row that names it. One another subagent spawned opens
+// inside that subagent's section, where its first row happened. One whose roster row
+// is not loaded — its spawn is on an older page, or it was never announced — opens
+// where its first row happened, in the conversation. Its name and state come from the
+// client's roster, which outlives the loaded window; only a subagent no roster ever
+// named goes unnamed.
 
 import type { AgentJournalPosition } from '../../../../shared/agent-session-journal-types'
 import {
@@ -14,6 +16,7 @@ import {
   type NativeChatSubagentEntry
 } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
+import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { compareMessages } from './native-chat-session-assembler'
 
 /** Where the roster row naming a subagent sits in the journal. */
@@ -25,7 +28,7 @@ export type NativeChatSubagentRosterPlace = {
 export type NativeChatSubagentSections = {
   /** Each subagent's own rows, by its id. */
   rows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
-  /** The entry of the first conversation roster naming each subagent. */
+  /** The entry of the first roster naming each subagent: a loaded one, else the client's. */
   entries: ReadonlyMap<string, NativeChatSubagentEntry>
   /** The roster row each entry came from. */
   rosters: ReadonlyMap<string, NativeChatSubagentRosterPlace>
@@ -49,7 +52,8 @@ export const NO_NATIVE_CHAT_SUBAGENT_SECTIONS: NativeChatSubagentSections = {
 
 export function nativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
-  subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
+  subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>,
+  roster?: StructuredAgentSubagentRoster
 ): NativeChatSubagentSections {
   const rows = new Map(Array.from(subagentRows).filter(([, agentRows]) => agentRows.length > 0))
   if (rows.size === 0) {
@@ -68,6 +72,15 @@ export function nativeChatSubagentSections(
           rosters.set(agent.id, { rowId: message.id, position: message.journalPosition })
         }
       }
+    }
+  }
+  // Loaded rosters anchor their sections; the client's names the rest.
+  const anchored = new Set(rosters.keys())
+  for (const agentId of rows.keys()) {
+    const named = anchored.has(agentId) ? undefined : roster?.get(agentId)
+    if (named !== undefined) {
+      entries.set(agentId, named.entry)
+      rosters.set(agentId, { rowId: named.rosterItemId, position: named.rosterPosition })
     }
   }
   const firstRow = (agentId: string): NativeChatMessage => rows.get(agentId)![0]!.message
@@ -93,7 +106,7 @@ export function nativeChatSubagentSections(
   for (const agentId of rows.keys()) {
     const scope = scopeOf(agentId)
     scopes.set(agentId, scope)
-    if (scope !== null || !entries.has(agentId)) {
+    if (scope !== null || !anchored.has(agentId)) {
       const inScope = openAt.get(scope)
       if (inScope) {
         inScope.push(agentId)
@@ -107,7 +120,7 @@ export function nativeChatSubagentSections(
   }
   const anchoredAt = new Map<string, string[]>()
   for (const [agentId, { rowId }] of rosters) {
-    if (scopes.get(agentId) === null) {
+    if (anchored.has(agentId) && scopes.get(agentId) === null) {
       const anchored = anchoredAt.get(rowId)
       if (anchored) {
         anchored.push(agentId)

@@ -11,6 +11,10 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import type { NativeChatSubagentState } from '../../../../shared/native-chat-types'
 import { projectStructuredItemsToNativeChat } from '../../../../shared/structured-agent-session-projection'
+import {
+  foldStructuredAgentSubagentRoster,
+  NO_STRUCTURED_AGENT_SUBAGENT_ROSTER
+} from '../../../../shared/structured-agent-session-subagent-roster'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { session, stubLayout } from './native-chat-windowing-test-harness'
 
@@ -154,5 +158,24 @@ describe("a subagent's rows in the transcript", () => {
     fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
     rerender(listOf('working'))
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+  })
+
+  it('names a section from the client roster when its roster row is not loaded', () => {
+    const items = itemsWith('completed', true)
+    const loaded = items.filter((next) => next.itemId !== 'spawn')
+    render(
+      <NativeChatMessageList
+        session={session(projectStructuredItemsToNativeChat(loaded))}
+        journalItems={loaded}
+        subagentRoster={foldStructuredAgentSubagentRoster(
+          NO_STRUCTURED_AGENT_SUBAGENT_ROSTER,
+          items
+        )}
+        isWorking={false}
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+    expect(screen.getByRole('button', { name: /explore the lane/, expanded: false })).toBeVisible()
   })
 })
