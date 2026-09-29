@@ -198,6 +198,23 @@ describe('NativeChatSubagentRun', () => {
     expect(screen.getByRole('button')).toHaveTextContent('4s')
   })
 
+  // A resumed child reopens in its original row with a fresh start; the idle
+  // time since its sibling stopped is not run time.
+  it('reads a child resumed after a long gap as its runs, not the gap', () => {
+    render(
+      <NativeChatSubagentRun
+        block={group([
+          { id: 'a', label: 'read', state: 'completed', startedAt: 1_000, settledAt: 6_000 },
+          { id: 'b', label: 'search', state: 'completed', startedAt: 300_000, settledAt: 305_000 }
+        ])}
+      />
+    )
+
+    const row = screen.getByRole('button')
+    expect(row).toHaveTextContent('· 10s')
+    expect(row.textContent).not.toContain('5m')
+  })
+
   it('shows no duration for a child whose run length was never recorded', () => {
     render(
       <NativeChatSubagentRun

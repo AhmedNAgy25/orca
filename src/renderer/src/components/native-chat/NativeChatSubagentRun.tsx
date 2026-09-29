@@ -201,7 +201,7 @@ export function NativeChatSubagentRun({
       normalizeSubagentState(agent.state) !== 'working' && typeof agent.settledAt !== 'number'
   )
   const clockStartedAt =
-    !runLengthUnknown && (working || summary.settledAt !== null) ? summary.startedAt : null
+    !runLengthUnknown && (working || summary.settledAt !== null) ? summary.clockStartedAt : null
 
   return (
     <div>

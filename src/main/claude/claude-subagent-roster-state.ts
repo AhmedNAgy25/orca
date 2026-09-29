@@ -52,7 +52,7 @@ export function applyClaudeSubagentInvocation(
       // A verdict on that run, not an invocation of this one; the latch still guards it.
       return true
     }
-    reopen(tracked, frame)
+    reopen(tracked, frame, now)
     if (frame.toolUseId) {
       tracked.invocationIds.add(frame.toolUseId)
       tracked.toolUseId = frame.toolUseId
@@ -72,7 +72,7 @@ export function applyClaudeSubagentInvocation(
       // THE reactivation: a new spawn alias reopening this entry. Gated on the
       // observed alias change rather than on the counter, so a late duplicate
       // cannot advance a settled run.
-      reopen(tracked, frame)
+      reopen(tracked, frame, now)
     }
     tracked.toolUseId = frame.toolUseId
   } else if (tracked.toolUseId && frame.toolUseId && tracked.toolUseId !== frame.toolUseId) {
@@ -84,12 +84,18 @@ export function applyClaudeSubagentInvocation(
   return true
 }
 
-/** The one place the attempt moves. */
-function reopen(tracked: TrackedEntry, frame: ClaudeSubagentTaskFrame): void {
+/** The one place the attempt moves. A new run starts its own clock, so the
+ *  idle time since the last run never reads as run time. */
+function reopen(tracked: TrackedEntry, frame: ClaudeSubagentTaskFrame, now: () => number): void {
   tracked.invokedInEarlierRun = false
   tracked.attempt += 1
   tracked.backgrounded = frame.backgrounded ?? false
-  tracked.entry = { ...tracked.entry, state: frame.state ?? 'working', settledAt: undefined }
+  tracked.entry = {
+    ...tracked.entry,
+    state: frame.state ?? 'working',
+    startedAt: now(),
+    settledAt: undefined
+  }
 }
 
 /** Two children can share a description; the ordinal keeps their rows apart

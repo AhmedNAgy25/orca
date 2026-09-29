@@ -409,6 +409,8 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     ])
     expect(backgroundTaskIds(journal)).toEqual([])
 
+    // The resume is a new run: its clock starts now, not at the first run's start.
+    vi.setSystemTime(5_100_000)
     second.translator.handle(
       toolCall('resume-a', 'toolu_message_a', 'SendMessage', { to: 'agent-a', message: 'resume' })
     )
@@ -418,9 +420,10 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     expect(rowsListing(journal, 'agent-a')).toEqual([
       expect.objectContaining({
         groupId: 'claude-session:turn-a',
-        agents: [expect.objectContaining({ id: 'agent-a', state: 'working' })]
+        agents: [expect.objectContaining({ id: 'agent-a', state: 'working', startedAt: 5_100_000 })]
       })
     ])
+    expect(rowsListing(journal, 'agent-a')[0]?.agents[0]?.settledAt).toBeUndefined()
     expect(proseRow(journal, 'A resumes the capture')).toMatchObject({
       agentId: 'agent-a',
       attempt: 2
