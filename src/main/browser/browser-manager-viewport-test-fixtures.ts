@@ -35,6 +35,8 @@ export type ViewportGuestHandle = {
   debuggerSendCommand: ReturnType<typeof vi.fn>
   debuggerIsAttached: ReturnType<typeof vi.fn>
   debuggerAttach: ReturnType<typeof vi.fn>
+  /** A CDP command sent on the guest's debugger by someone other than the manager (an agent). */
+  sendForeignCdpCommand: (method: string, params?: Record<string, unknown>) => unknown
   setGuestUserAgent: (ua: string) => void
   commitNavigationTo: (nextUrl: string) => void
   webContentsUserAgent: () => string
@@ -107,6 +109,7 @@ export function createViewportGuestFactory(
       debuggerSendCommand,
       debuggerIsAttached,
       debuggerAttach,
+      sendForeignCdpCommand: sendCommand,
       setGuestUserAgent: (ua: string) => {
         currentUa = ua
       },
