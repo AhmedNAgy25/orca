@@ -23,8 +23,8 @@ const GENERATIONS_DIRECTORY_NAME = 'generations'
 const STAGING_DIRECTORY_NAME = 'tmp'
 const HOST_INDEX_FILE_NAME = 'hosts.json'
 
-/** The architecture reference's cache ceiling: four hosts, least recently activated evicted. */
-export const MAX_CACHED_HOSTS = 4
+/** Six hosts, least recently opened or activated evicted; each is ~8 MB on disk. */
+export const MAX_CACHED_HOSTS = 6
 
 export type ActiveGeneration = {
   readonly buildId: string
@@ -273,8 +273,17 @@ export function createGenerationStore(options: {
     }
     const index = await readHostIndex()
     index.set(staged.hostKey, now())
-    // Enforced here rather than left to a caller: the four-host ceiling is this module's invariant.
+    // Enforced here rather than left to a caller: the host ceiling is this module's invariant.
     await enforceHostLimit(index, staged.hostKey)
+    return active
+  }
+
+  async function openActive(hostKey: string): Promise<ActiveGeneration | null> {
+    const active = await readActive(hostKey)
+    // An open is use, so a daily host downloaded long ago is not evicted first. Count unchanged.
+    if (active !== null) {
+      await writeHostIndex((await readHostIndex()).set(hostKey, now()))
+    }
     return active
   }
 
@@ -322,7 +331,7 @@ export function createGenerationStore(options: {
   }
 
   return {
-    readActiveGeneration: (hostKey) => serialize(() => readActive(hostKey)),
+    readActiveGeneration: (hostKey) => serialize(() => openActive(hostKey)),
     stageGeneration: (hostKey, result) => serialize(() => stage(hostKey, result)),
     commitGeneration: (staged) => serialize(() => commit(staged)),
     abortStagedGeneration: (staged) =>

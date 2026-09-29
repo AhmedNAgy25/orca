@@ -72,6 +72,11 @@ async function activate(
   await store.commitGeneration(await store.stageGeneration(hostKey, result))
 }
 
+/** Distinct host keys in activation order, sized against the ceiling rather than a literal. */
+function hostKeys(count: number): string[] {
+  return Array.from({ length: count }, (_, index) => deriveHostCacheKey(`host-${index}`))
+}
+
 describe('generation store', () => {
   it('stages and commits exactly the manifest, with the manifest written last', async () => {
     const fs = createFakeFileSystem()
@@ -211,7 +216,7 @@ describe('generation store', () => {
     const fs = createFakeFileSystem()
     let clock = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
-    const hosts = ['a', 'b', 'c', 'd', 'e'].map((name) => deriveHostCacheKey(name))
+    const hosts = hostKeys(MAX_CACHED_HOSTS + 1)
 
     for (const host of hosts) {
       await activate(store, host)
@@ -229,10 +234,10 @@ describe('generation store', () => {
     const fs = createFakeFileSystem()
     let clock = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
-    const oldest = deriveHostCacheKey('a')
+    const [oldest, ...rest] = hostKeys(MAX_CACHED_HOSTS - 1)
     const orphan = deriveHostCacheKey('orphan')
-    for (const name of ['a', 'b', 'c']) {
-      await activate(store, deriveHostCacheKey(name))
+    for (const host of [oldest, ...rest]) {
+      await activate(store, host)
     }
     // Activated last, so recency alone would keep it; its index entry is what goes missing.
     await activate(store, orphan)
@@ -240,7 +245,7 @@ describe('generation store', () => {
     delete index[orphan]
     fs.seed('hosts.json', { kind: 'file', bytes: new TextEncoder().encode(JSON.stringify(index)) })
 
-    await activate(store, deriveHostCacheKey('d'))
+    await activate(store, deriveHostCacheKey('one-too-many'))
 
     expect(fs.paths().some((path) => path.startsWith(orphan))).toBe(false)
     expect((await store.readActiveGeneration(oldest))?.buildId).toBe(BUILD)
@@ -250,34 +255,74 @@ describe('generation store', () => {
     const fs = createFakeFileSystem()
     let clock = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
-    const kept = deriveHostCacheKey('a')
-    const evicted = deriveHostCacheKey('b')
-    for (const name of ['a', 'b', 'c', 'd']) {
-      await activate(store, deriveHostCacheKey(name))
+    const hosts = hostKeys(MAX_CACHED_HOSTS)
+    const [kept, evicted] = hosts
+    for (const host of hosts) {
+      await activate(store, host)
     }
-    // A redownload of the bundle host A already has, which takes the same-build commit path.
+    // A redownload of the bundle the oldest host already has, which takes the same-build path.
     await activate(store, kept)
 
-    await activate(store, deriveHostCacheKey('e'))
+    await activate(store, deriveHostCacheKey('one-too-many'))
 
     expect(fs.paths().some((path) => path.startsWith(evicted))).toBe(false)
     expect((await store.readActiveGeneration(kept))?.buildId).toBe(BUILD)
+  })
+
+  it('counts opening a cached generation as use of that host', async () => {
+    const fs = createFakeFileSystem()
+    let clock = 0
+    const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
+    const hosts = hostKeys(MAX_CACHED_HOSTS)
+    for (const host of hosts) {
+      await activate(store, host)
+    }
+    expect((await store.readActiveGeneration(hosts[0]))?.buildId).toBe(BUILD)
+
+    await activate(store, deriveHostCacheKey('one-too-many'))
+
+    expect((await store.readActiveGeneration(hosts[0]))?.buildId).toBe(BUILD)
+    expect(fs.paths().some((path) => path.startsWith(hosts[1]))).toBe(false)
+  })
+
+  it('writes nothing when a read finds no active generation', async () => {
+    const fs = createFakeFileSystem()
+    const store = createGenerationStore({ fileSystem: fs, now: () => 10 })
+    await activate(store, HOST)
+    const writesBefore = fs.writes.length
+
+    expect(await store.readActiveGeneration(deriveHostCacheKey('never-opened'))).toBeNull()
+
+    expect(fs.writes).toHaveLength(writesBefore)
+    expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 10 }))
+  })
+
+  it('returns the generation when opening it cannot write the recency index', async () => {
+    const fs = createFakeFileSystem()
+    let clock = 0
+    const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
+    await activate(store, HOST)
+    fs.failWritesAt('hosts.json')
+
+    expect((await store.readActiveGeneration(HOST))?.buildId).toBe(BUILD)
+    expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 1 }))
   })
 
   it('never counts or evicts a host that is only mid-download', async () => {
     const fs = createFakeFileSystem()
     let clock = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
-    const oldest = deriveHostCacheKey('a')
+    const hosts = hostKeys(MAX_CACHED_HOSTS)
+    const oldest = hosts[0]
     const downloading = deriveHostCacheKey('downloading')
-    for (const name of ['a', 'b', 'c', 'd']) {
-      await activate(store, deriveHostCacheKey(name))
+    for (const host of hosts) {
+      await activate(store, host)
     }
     const staged = await store.stageGeneration(downloading, buildResult({}))
 
-    await activate(store, deriveHostCacheKey('e'))
+    await activate(store, deriveHostCacheKey('one-too-many'))
 
-    // The ceiling is four cached generations, so the fifth activation evicts the least recently
+    // The ceiling counts cached generations, so the activation past it evicts the least recently
     // activated host and leaves the download alone.
     expect(fs.paths().some((path) => path.startsWith(oldest))).toBe(false)
     expect(fs.text(`${staged.directory.slice(ROOT.length + 1)}/manifest.json`)).not.toBeNull()
@@ -441,17 +486,17 @@ describe('generation store', () => {
 
   it('keeps the host it just activated when the clock jumps backward', async () => {
     const fs = createFakeFileSystem()
-    const times = [100, 200, 300, 400, 1]
+    const hosts = hostKeys(MAX_CACHED_HOSTS + 1)
+    const times = [...hosts.slice(1).map((_, index) => (index + 1) * 100), 1]
     let tick = 0
     const store = createGenerationStore({ fileSystem: fs, now: () => times[tick++] ?? 0 })
-    const hosts = ['a', 'b', 'c', 'd', 'e'].map((name) => deriveHostCacheKey(name))
 
     for (const host of hosts) {
       await activate(store, host)
     }
 
-    expect((await store.readActiveGeneration(hosts[4]))?.directory).toBe(
-      `${ROOT}/${hosts[4]}/generations/${BUILD}`
+    expect((await store.readActiveGeneration(hosts[MAX_CACHED_HOSTS]))?.directory).toBe(
+      `${ROOT}/${hosts[MAX_CACHED_HOSTS]}/generations/${BUILD}`
     )
     expect(await store.readActiveGeneration(hosts[0])).toBeNull()
     for (const host of hosts.slice(1)) {
