@@ -127,19 +127,26 @@ export function nativeChatSubagentSections(
   return { rows, entries, anchoredAt, openAt, pathOf }
 }
 
+/** Every subagent's rows in transcript order: apart from the merge below, so an
+ *  update to the conversation alone (the parent streaming) reuses it. */
+export function nativeChatSubagentRowsInOrder(
+  subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
+): readonly NativeChatSubagentRow[] {
+  return Array.from(subagentRows.values())
+    .flat()
+    .sort((a, b) => compareMessages(a.message, b.message))
+}
+
 /** Every row with its turn, the conversation's and each subagent's together, in
  *  transcript order: a subagent's edits are real changes in the turn they happened. */
 export function nativeChatRowsInTranscriptOrder(
   messages: readonly NativeChatMessage[],
   turnKeys: readonly (string | undefined)[],
-  sections: NativeChatSubagentSections
+  subagentRows: readonly NativeChatSubagentRow[]
 ): { messages: readonly NativeChatMessage[]; turnKeys: readonly (string | undefined)[] } {
-  if (sections.rows.size === 0) {
+  if (subagentRows.length === 0) {
     return { messages, turnKeys }
   }
-  const subagentRows = Array.from(sections.rows.values())
-    .flat()
-    .sort((a, b) => compareMessages(a.message, b.message))
   const merged: NativeChatMessage[] = []
   const mergedTurnKeys: (string | undefined)[] = []
   let next = 0

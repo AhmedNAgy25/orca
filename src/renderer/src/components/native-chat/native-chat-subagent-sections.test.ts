@@ -7,6 +7,7 @@ import { projectNativeChatTranscript } from '../../../../shared/native-chat-tran
 import { compareMessages } from './native-chat-session-assembler'
 import {
   nativeChatRowsInTranscriptOrder,
+  nativeChatSubagentRowsInOrder,
   nativeChatSubagentSections
 } from './native-chat-subagent-sections'
 import {
@@ -320,7 +321,11 @@ describe("a subagent's edits in its turn's changed files", () => {
       row('answer', say('Done.'))
     ])
     const turnKeys = conversation.map(() => 'ask')
-    const rows = nativeChatRowsInTranscriptOrder(conversation, turnKeys, sections)
+    const rows = nativeChatRowsInTranscriptOrder(
+      conversation,
+      turnKeys,
+      nativeChatSubagentRowsInOrder(sections.rows)
+    )
     expect(rows.messages.map((message) => message.id)).toEqual([
       'ask',
       'spawn',

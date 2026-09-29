@@ -28,7 +28,10 @@ import {
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
-import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
+import {
+  nativeChatRowsInTranscriptOrder,
+  nativeChatSubagentRowsInOrder
+} from './native-chat-subagent-sections'
 import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
 import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
@@ -163,13 +166,17 @@ export function NativeChatMessageList({
       return currentTurnKey
     })
   }, [messages])
+  const subagentRowsInOrder = useMemo(
+    () => nativeChatSubagentRowsInOrder(projection.subagentRows),
+    [projection.subagentRows]
+  )
   const turnDiffs = useMemo(() => {
     if (!journalItems) {
       return new Map<string, NativeChatTurnDiff>()
     }
-    const rows = nativeChatRowsInTranscriptOrder(messages, turnKeys, subagentSections)
+    const rows = nativeChatRowsInTranscriptOrder(messages, turnKeys, subagentRowsInOrder)
     return nativeChatTurnDiffs(rows.messages, rows.turnKeys, subagentSections.pathOf)
-  }, [journalItems, messages, subagentSections, turnKeys])
+  }, [journalItems, messages, subagentRowsInOrder, subagentSections.pathOf, turnKeys])
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
   const thinking = useMemo(

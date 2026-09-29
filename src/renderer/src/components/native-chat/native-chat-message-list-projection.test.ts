@@ -84,3 +84,31 @@ it('leaves producer-owned messages and blocks untouched', () => {
   expect(input).toEqual(snapshot)
   expect(prose.blocks).toHaveLength(1)
 })
+
+// The list orders subagent rows once per change to them; the parent streaming must
+// not hand it a new map.
+it("keeps the subagent rows when only the conversation changes, and replaces them when a subagent's do", () => {
+  const projectList = createNativeChatMessageListProjection()
+  const child = (id: string, timestamp: number, text: string): NativeChatMessage => ({
+    ...message(id, timestamp, [{ type: 'text', text }]),
+    agentId: 'task-1'
+  })
+  const tail = message('tail', 3, [{ type: 'text', text: 'Answer' }])
+  const rows = [child('child-1', 1, 'Reading'), child('child-2', 2, 'Found it'), tail]
+  const initial = projectList(rows)
+
+  const streamed = projectList([
+    ...rows.slice(0, 2),
+    { ...tail, blocks: [{ type: 'text', text: 'Answer grows' }] }
+  ])
+  expect(streamed.conversation).not.toBe(initial.conversation)
+  expect(streamed.subagentRows).toBe(initial.subagentRows)
+
+  const childSpoke = projectList([...rows, child('child-3', 4, 'Done')])
+  expect(childSpoke.subagentRows).not.toBe(initial.subagentRows)
+  expect(childSpoke.subagentRows.get('task-1')?.map((row) => row.message.id)).toEqual([
+    'child-1',
+    'child-2',
+    'child-3'
+  ])
+})
