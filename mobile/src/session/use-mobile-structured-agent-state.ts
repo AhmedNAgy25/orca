@@ -189,6 +189,7 @@ export function useMobileStructuredAgentState(args: {
         }
         // Mobile draws only the session's own rows, so a page of a subagent's rows alone
         // would land as nothing; read on until a page adds a row the reader can see.
+        // Kept for older hosts: a host that windows by the session's own rows never sends one.
         const pages: { requestedCursor: AgentJournalCursor; page: AgentSessionHistoryPage }[] = []
         let requestedCursor = cursor
         while (pages.length < OLDER_PAGES_PER_LOAD) {
@@ -241,7 +242,8 @@ export function useMobileStructuredAgentState(args: {
   }, [apply, client, loadingOlder, sessionId, sessionKey])
 
   // A window of only a subagent's rows draws nothing, and an empty list cannot be scrolled
-  // to ask for more, so it reads back once from each such head.
+  // to ask for more, so it reads back once from each such head. Kept for older hosts, whose
+  // first page can be a subagent's burst; a host that windows by own rows opens on the conversation.
   const drawsNothingFrom =
     state.status === 'ready' && state.hasOlder && !state.items.some(isRootAgentJournalItem)
       ? `${sessionKey}:${state.epoch}:${state.items[0]?.sequence}`

@@ -44,10 +44,31 @@ export function resolveHistoryLimit(limit: number | undefined): number {
   return Math.min(AGENT_SESSION_HISTORY_MAX_LIMIT, Math.max(1, Math.floor(limit)))
 }
 
-/** Whose rows a backward read windows over. A reader of the session's own agent
- *  alone windows over only its rows, so a subagent's burst cannot crowd them off
- *  the page. In-process only: no wire request carries it. */
+/** Whose rows a backward read serves. Both window over the session's own rows; a
+ *  reader of the session's own agent alone gets only those. In-process only: no wire
+ *  request carries it. */
 export type AgentSessionHistoryScope = 'every-agent' | 'own-agent'
+
+/**
+ * The newest `limit` of the session's own rows, in whole sequence groups, and every
+ * row after the oldest of them: a subagent's rows ride along with the conversation
+ * they happened in, so its burst cannot crowd the conversation off the page. The page
+ * stays contiguous and starts at its first item, as the cursor means. Fewer own rows
+ * than `limit` reach back to the start. With no subagent rows this is the newest
+ * `limit` rows, as before.
+ */
+function conversationWindow(
+  items: readonly AgentJournalRenderItem[],
+  limit: number
+): AgentJournalRenderItem[] {
+  const own = items.filter(isRootAgentJournalItem)
+  if (own.length === items.length) {
+    return newestWholeSequenceGroups(items, limit)
+  }
+  const ownWindow = newestWholeSequenceGroups(own, limit)
+  const start = ownWindow.length < own.length ? ownWindow[0]?.sequence : undefined
+  return start === undefined ? [...items] : items.filter((item) => item.sequence >= start)
+}
 
 export function readAgentSessionHistory(
   journal: AgentSessionJournal,
@@ -76,7 +97,7 @@ export function readAgentSessionHistory(
   const scoped =
     scope === 'own-agent' ? snapshot.items.filter(isRootAgentJournalItem) : snapshot.items
   const older = cursor ? scoped.filter((item) => item.sequence < cursor.sequence) : scoped
-  const windowed = newestWholeSequenceGroups(older, limit)
+  const windowed = conversationWindow(older, limit)
   const { items, dropped } = boundHistoryItemsByBytes(
     windowed,
     'newest',
@@ -128,7 +149,7 @@ function buildHydrationPage(
   snapshot: AgentJournalSnapshot,
   fence?: number
 ): AgentSessionHistoryPage {
-  const items = newestWholeSequenceGroups(snapshot.items, AGENT_SESSION_HISTORY_MAX_LIMIT)
+  const items = conversationWindow(snapshot.items, AGENT_SESSION_HISTORY_MAX_LIMIT)
   const bounded = boundHistoryItemsByBytes(
     items,
     'newest',
