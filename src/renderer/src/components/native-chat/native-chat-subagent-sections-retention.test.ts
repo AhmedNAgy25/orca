@@ -137,7 +137,7 @@ describe('subagent sections over the live retained window', () => {
     expect(conversation.map((message) => message.id)).toEqual(['prompt', 'roster'])
   })
 
-  it('trims a subagent away with the roster naming it, not into an unnamed section', () => {
+  it("keeps a trimmed roster's subagent named at the head when the parent's rows trim the roster", () => {
     const opened = snapshot([
       item('prompt', 1, said('user', 'review the PR')),
       item('roster', 2, rosterBody),
@@ -153,8 +153,8 @@ describe('subagent sections over the live retained window', () => {
     const { conversation, sections } = sectionsOf(stream(opened, parent))
 
     expect(conversation[0]?.id).toBe('own-0')
-    expect(sections.rows.has('task-1')).toBe(false)
-    expect(sections.openAt.get(null)).toBeUndefined()
+    expect(sections.openAt.get(null)).toEqual(['task-1'])
+    expect(sections.entries.get('task-1')?.label).toBe('review the PR')
   })
 
   it('keeps a section named and live after a burst trims the roster row naming it', () => {

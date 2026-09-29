@@ -166,10 +166,9 @@ function ownItemCount(items: readonly AgentJournalRenderItem[]): number {
   return items.reduce((count, item) => (isRootAgentJournalItem(item) ? count + 1 : count), 0)
 }
 
-/** From the oldest of the newest `ownLimit` own rows, once an own row passes the limit: a
- *  paged-in run of a subagent's rows at the head stays until then, and goes with the roster
- *  that named it rather than outliving it as an unnamed section. With no subagent rows this is
- *  the newest `ownLimit` rows. */
+/** Everything after the newest own row past `ownLimit`, so a trim only ever cuts through one of
+ *  the session's own rows: a paged-in run of a subagent's rows at the head stays until an own row
+ *  pushes it out. With no subagent rows this is the newest `ownLimit` rows. */
 function trimRetainedItems(
   items: AgentJournalRenderItem[],
   ownLimit: number,
@@ -177,17 +176,15 @@ function trimRetainedItems(
 ): AgentJournalRenderItem[] {
   let start = Math.max(0, items.length - cap)
   let own = 0
-  let oldestKeptOwn = start
   for (let index = items.length - 1; index >= start; index -= 1) {
     if (!isRootAgentJournalItem(items[index])) {
       continue
     }
     own += 1
     if (own > ownLimit) {
-      start = oldestKeptOwn
+      start = index + 1
       break
     }
-    oldestKeptOwn = index
   }
   return start === 0 ? items : items.slice(start)
 }
