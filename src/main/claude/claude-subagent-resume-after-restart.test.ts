@@ -390,6 +390,47 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     await second.exit()
   })
 
+  it('invents no stop time for a child whose host died without sweeping it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    const crashed = await openJournal()
+    const first = acquire(crashed)
+    first.translator.handle(userTurn('turn-a'))
+    first.translator.handle(
+      toolCall('spawn-a', 'toolu_spawn_a', 'Agent', {
+        description: 'Grok PR',
+        run_in_background: true
+      })
+    )
+    first.translator.handle(taskStarted('agent-a', 'toolu_spawn_a', 'Grok PR'))
+    await first.settle()
+    // The host dies: nothing sweeps the child, and reopening the journal can say only that
+    // contact was lost, not when.
+    await crashed.close()
+    const journal = await openJournal()
+    const [lost] = rowsListing(journal, 'agent-a')[0]?.agents ?? []
+    expect(lost).toMatchObject({ id: 'agent-a', state: 'unverifiable' })
+    expect(lost?.settledAt).toBeUndefined()
+
+    vi.setSystemTime(5_000_000)
+    const second = acquire(journal)
+    second.translator.handle(userTurn('turn-b'))
+    second.translator.handle(
+      frame({
+        type: 'system',
+        subtype: 'task_notification',
+        uuid: 'unfinished-a',
+        task_id: 'agent-a',
+        status: 'stopped'
+      })
+    )
+    await second.settle()
+    const [stopped] = rowsListing(journal, 'agent-a')[0]?.agents ?? []
+    expect(stopped).toMatchObject({ id: 'agent-a', state: 'stopped' })
+    expect(stopped?.settledAt).toBeUndefined()
+    await second.exit()
+  })
+
   it('still files a child no journaled row resolved under its own reference, never the parent', async () => {
     const journal = await openJournal()
     const first = acquire(journal)
