@@ -230,6 +230,22 @@ describe('NativeChatSubagentRun', () => {
     expect(row).toHaveTextContent('unverifiable')
     expect(row.textContent).not.toContain('·')
   })
+
+  // The provider can still say how a child whose host died ended, but not when.
+  it('shows no duration when a verdict reached a child with no recorded stop time', () => {
+    render(
+      <NativeChatSubagentRun
+        block={group([
+          { id: 'a', label: 'read', state: 'completed', startedAt: 1_000, settledAt: 5_000 },
+          { id: 'b', label: 'search', state: 'stopped', startedAt: 1_000 }
+        ])}
+      />
+    )
+
+    const row = screen.getByRole('button')
+    expect(row).toHaveTextContent('stopped')
+    expect(row.textContent).not.toContain('·')
+  })
 })
 
 describe('NativeChatToolRun with a spawn group', () => {
