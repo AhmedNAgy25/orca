@@ -1,5 +1,5 @@
+import { useWallAppUpdate } from '../app-update/use-wall-app-update'
 import { openExternalLink } from '../platform/external-link'
-import type { KnownAppUpdate } from '../storage/app-update-preferences'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
@@ -17,8 +17,6 @@ export type BlockedVerdict =
 
 type Props = {
   verdict: BlockedVerdict
-  /** The newest release the shell's checker knows; the page never has one (no checker there). */
-  mobileUpdate?: KnownAppUpdate | null
 }
 
 const DESKTOP_TOO_OLD_BODY =
@@ -68,22 +66,24 @@ function blockBody(verdict: BlockedVerdict, remedy: BlockRemedy, storeName: stri
   return DESKTOP_TOO_OLD_BODY
 }
 
-export function ProtocolBlockScreen({ verdict, mobileUpdate = null }: Props) {
+export function ProtocolBlockScreen({ verdict }: Props) {
   const router = useRouteHandoff()
+  const mobileUpdate = useWallAppUpdate()
   const remedy = blockRemedy(verdict)
   // Why: Android APKs ship through GitHub Releases until a Play Store listing exists.
   const mobileUpdateTarget =
     Platform.OS === 'ios'
       ? { label: 'Open App Store', url: IOS_APP_STORE_URL, storeName: 'the App Store' }
       : { label: 'Open GitHub Releases', url: RELEASES_URL, storeName: 'GitHub Releases' }
+  const mobileAction = mobileUpdate
+    ? { label: `Get Orca ${mobileUpdate.version}`, url: mobileUpdate.url }
+    : { label: mobileUpdateTarget.label, url: mobileUpdateTarget.url }
   // No download to offer when the fix is a refetch: reconnecting is what this screen leaves you to do.
   const primaryAction =
     remedy === 'refresh-bundle'
       ? null
       : remedy === 'update-mobile'
-        ? mobileUpdate
-          ? { label: `Get Orca ${mobileUpdate.version}`, url: mobileUpdate.url }
-          : { label: mobileUpdateTarget.label, url: mobileUpdateTarget.url }
+        ? mobileAction
         : { label: 'Open GitHub Releases', url: RELEASES_URL }
 
   const title = blockTitle(remedy)

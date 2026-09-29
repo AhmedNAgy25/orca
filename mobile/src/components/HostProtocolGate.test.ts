@@ -37,14 +37,8 @@ const hostClient = vi.hoisted(() => ({
 vi.mock('../transport/client-context', () => ({
   useHostClient: () => hostClient.current
 }))
-// The native hook imports the update checker module; the gate's job is only to hand its answer on.
-const offeredUpdate = vi.hoisted(() => {
-  const state: { current: { version: string; url: string } | null } = { current: null }
-  return state
-})
-vi.mock('../app-update/use-blocked-shell-app-update', () => ({
-  useBlockedShellAppUpdate: () => offeredUpdate.current
-}))
+// The wall's release offer: the native hook imports the update checker module.
+vi.mock('../app-update/use-wall-app-update', () => ({ useWallAppUpdate: () => null }))
 // Descriptor bookkeeping only; the real recorder reaches the native keychain through host-store.
 vi.mock('../transport/host-descriptor-recorder', () => ({
   recordHostDescriptorFromStatus: vi.fn()
@@ -96,7 +90,6 @@ describe('HostProtocolGate', () => {
     nativeTestState.openUrl.mockClear()
     nativeTestState.platform.OS = 'ios'
     probeMounts.count = 0
-    offeredUpdate.current = null
   })
 
   afterEach(() => {
@@ -137,19 +130,6 @@ describe('HostProtocolGate', () => {
     expect(nativeTestState.openUrl).toHaveBeenCalledWith(
       'https://github.com/stablyai/orca/releases'
     )
-  })
-
-  it('hands the known release to the mobile update wall', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    offeredUpdate.current = { version: '0.0.52', url: 'https://example.test/0.0.52' }
-    hostClient.current = {
-      client: clientWithStatus({ protocolVersion: 5, minCompatibleMobileVersion: 999 }),
-      state: 'connected'
-    }
-    renderer = await renderGate()
-    expect(renderedText(renderer)).toContain('Get Orca 0.0.52')
-    act(() => renderer?.root.findAllByType('Pressable')[0]?.props.onPress())
-    expect(nativeTestState.openUrl).toHaveBeenCalledWith('https://example.test/0.0.52')
   })
 
   it('replaces the host UI with the block screen when desktop is too old', async () => {

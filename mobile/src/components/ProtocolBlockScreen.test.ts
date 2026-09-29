@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { KnownAppUpdate } from '../storage/app-update-preferences'
 import type { BlockedVerdict } from './ProtocolBlockScreen'
 import { ProtocolBlockScreen } from './ProtocolBlockScreen'
 
@@ -9,6 +10,14 @@ const nativeTestState = vi.hoisted(() => {
   const platform: { OS: 'ios' | 'android' } = { OS: 'ios' }
   return { openUrl: vi.fn(), platform }
 })
+
+const wallUpdate = vi.hoisted(() => {
+  const state: { current: KnownAppUpdate | null } = { current: null }
+  return state
+})
+
+// The release the installed app's update check found; the real hook imports the checker module.
+vi.mock('../app-update/use-wall-app-update', () => ({ useWallAppUpdate: () => wallUpdate.current }))
 
 vi.mock('react-native', () => ({
   Linking: { openURL: nativeTestState.openUrl },
@@ -30,12 +39,10 @@ const RELEASES_URL = 'https://github.com/stablyai/orca/releases'
 
 let renderer: ReactTestRenderer | null = null
 
-function render(
-  verdict: BlockedVerdict,
-  mobileUpdate?: { version: string; url: string } | null
-): string {
+function render(verdict: BlockedVerdict, mobileUpdate: KnownAppUpdate | null = null): string {
+  wallUpdate.current = mobileUpdate
   act(() => {
-    renderer = create(createElement(ProtocolBlockScreen, { verdict, mobileUpdate }))
+    renderer = create(createElement(ProtocolBlockScreen, { verdict }))
   })
   return JSON.stringify(renderer?.toJSON())
 }

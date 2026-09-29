@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AppUpdateState } from './app-update-checker'
-import { useBlockedShellAppUpdate } from './use-blocked-shell-app-update'
-import { useBlockedShellAppUpdate as usePageBlockedShellAppUpdate } from './use-blocked-shell-app-update.web'
+import { useWallAppUpdate } from './use-wall-app-update'
+import { useWallAppUpdate as usePageWallAppUpdate } from './use-wall-app-update.web'
 
 const runtime = vi.hoisted(() => {
   const state: { snapshot: AppUpdateState } = {
@@ -16,7 +16,7 @@ vi.mock('./app-update-runtime', () => ({ useAppUpdateState: () => runtime.snapsh
 
 const RELEASE = { version: '0.0.52', url: 'https://example.test/0.0.52' }
 
-describe('useBlockedShellAppUpdate', () => {
+describe('useWallAppUpdate', () => {
   it('offers a release dismissed on home, because it is the way past the wall', () => {
     runtime.snapshot = {
       lastCheckedAt: 1,
@@ -24,7 +24,7 @@ describe('useBlockedShellAppUpdate', () => {
       dismissedVersion: RELEASE.version,
       checking: false
     }
-    expect(useBlockedShellAppUpdate()).toEqual(RELEASE)
+    expect(useWallAppUpdate()).toEqual(RELEASE)
   })
 
   it('offers nothing when no release is known', () => {
@@ -34,20 +34,18 @@ describe('useBlockedShellAppUpdate', () => {
       dismissedVersion: null,
       checking: false
     }
-    expect(useBlockedShellAppUpdate()).toBeNull()
+    expect(useWallAppUpdate()).toBeNull()
   })
 })
 
-describe('the page form of useBlockedShellAppUpdate', () => {
+describe('the page form of useWallAppUpdate', () => {
   it('offers nothing', () => {
-    expect(usePageBlockedShellAppUpdate()).toBeNull()
+    expect(usePageWallAppUpdate()).toBeNull()
   })
 
+  // CI's page-closure pin does not count modules, so this is the only guard on this page path.
   it('imports only types, so the page bundle never carries the checker', () => {
-    const source = readFileSync(
-      join(import.meta.dirname, 'use-blocked-shell-app-update.web.ts'),
-      'utf8'
-    )
+    const source = readFileSync(join(import.meta.dirname, 'use-wall-app-update.web.ts'), 'utf8')
     const imports = source.split('\n').filter((line) => line.startsWith('import'))
     expect(imports.length).toBeGreaterThan(0)
     expect(imports.every((line) => line.startsWith('import type '))).toBe(true)
