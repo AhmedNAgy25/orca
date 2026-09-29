@@ -51,6 +51,14 @@ export type JournalItemAppendOptions = AgentJournalProducerLinkage & {
 }
 export type JournalTombstoneInput = { fence: number }
 
+/** One reduced item and the producer that wrote it. */
+export type JournalItemLinkageVisitor = (
+  itemId: string,
+  sequence: number,
+  body: AgentJournalItemBody,
+  linkage: AgentJournalProducerLinkage
+) => void
+
 export type JournalLifecycleBatchInput = {
   settlementId: string
   mutations: readonly JournalLifecycleMutationInput[]

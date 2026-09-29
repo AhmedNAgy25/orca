@@ -12,9 +12,8 @@
 // An alias outlives the process that learned it. A child resumed after its
 // session's provider restarted still parents its frames to the ORIGINAL spawn
 // call, while the announcement this process sees names only the resuming call —
-// so the spawn call's alias is recalled from the rows the earlier run journaled.
+// so the spawn call's alias is recalled from what the earlier run journaled.
 
-import type { StructuredAgentSessionLinkageJournal } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { isBoundedClaudeTaskId } from './claude-background-task-tracker'
 
 /** Both maps are event-accumulated and nothing prunes them, so both are bounded. */
@@ -77,52 +76,4 @@ export class ClaudeSubagentIds {
     this.canonicalByToolUse.clear()
     this.excluded.clear()
   }
-}
-
-/**
- * The aliases an earlier run of this session learned, re-derived from the rows it
- * journaled: each agent row names its canonical id beside the spawn call its
- * frames arrived under. Derived rather than stored, so it cannot disagree with
- * the rows it came from.
- *
- * Read per bound journal epoch. Before the journal is bound nothing is recalled
- * and nothing is cached, so the first read after bind still sees every row.
- */
-export class ClaudeJournaledSubagentIds {
-  private journal: StructuredAgentSessionLinkageJournal | null = null
-  private epoch: string | null = null
-  private canonicalByToolUse = new Map<string, string>()
-
-  constructor(private readonly bound: () => StructuredAgentSessionLinkageJournal | null) {}
-
-  canonical = (toolUseId: string): string | null => {
-    const journal = this.bound()
-    if (!journal) {
-      return null
-    }
-    if (journal !== this.journal || journal.epoch !== this.epoch) {
-      this.journal = journal
-      this.epoch = journal.epoch
-      this.canonicalByToolUse = journaledAliases(journal)
-    }
-    return this.canonicalByToolUse.get(toolUseId) ?? null
-  }
-}
-
-function journaledAliases(journal: StructuredAgentSessionLinkageJournal): Map<string, string> {
-  const aliases = new Map<string, string>()
-  journal.visitItemLinkage(({ agentId, providerParentRef, producerKind }) => {
-    // A row stamped with its own reference was never resolved, so it names no alias.
-    if (
-      producerKind === 'agent' &&
-      agentId !== undefined &&
-      providerParentRef !== undefined &&
-      agentId !== providerParentRef &&
-      isBoundedClaudeTaskId(agentId) &&
-      isBoundedClaudeTaskId(providerParentRef)
-    ) {
-      aliases.set(providerParentRef, agentId)
-    }
-  })
-  return aliases
 }

@@ -7,7 +7,6 @@ import type {
   AgentJournalCursor,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
-  AgentJournalProducerLinkage,
   AgentJournalSnapshot,
   AgentJournalSubmission,
   AgentJournalThreadGoal,
@@ -49,6 +48,7 @@ import type {
   AgentSessionJournalOptions,
   JournalAppendResult,
   JournalItemAppendOptions,
+  JournalItemLinkageVisitor,
   JournalLifecycleBatchInput,
   JournalReadSince,
   JournalSubmissionInput,
@@ -215,11 +215,11 @@ export class AgentSessionJournal {
   itemBody = (itemId: string): AgentJournalItemBody | null =>
     this.state.items.get(itemId)?.body ?? null
 
-  /** Each reduced item's producer linkage, for a producer re-deriving what an earlier run of this
-   *  session resolved. */
-  visitItemLinkage = (visit: (linkage: AgentJournalProducerLinkage) => void): void => {
+  /** Visits reduced items with the producer that wrote each, for a producer re-deriving what an
+   *  earlier run of this session left. */
+  visitItemsWithLinkage = (visit: JournalItemLinkageVisitor): void => {
     for (const item of this.state.items.values()) {
-      visit(item)
+      visit(item.itemId, item.sequence, item.body, item)
     }
   }
 

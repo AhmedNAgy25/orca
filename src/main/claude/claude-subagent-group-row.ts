@@ -10,10 +10,47 @@ import type { NativeChatSubagentEntry } from '../../shared/native-chat-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import type { RosterGroup } from './claude-subagent-roster-state'
 
+type GroupRowAttempts = (entryId: string) => number
+
 /** Durable journal identity for the group's row — stable across revisions and
  *  across a restart, so replay finds the same row instead of appending a new one. */
 export function claudeSubagentGroupIdentity(groupId: string): AgentJournalItemIdentity {
   return { provider: 'orca', clientMessageId: `claude-subagents:${groupId}` }
+}
+
+/**
+ * A group row an earlier provider run journaled, as this run's roster state.
+ *
+ * Inheriting writes nothing: the row is revised only when this run's own events
+ * change the group, and then it keeps every child the earlier run listed. Each
+ * child outlived the run that spawned it, so none is tied to this run's turns.
+ */
+export function inheritedClaudeSubagentGroup(
+  groupId: string,
+  entries: readonly NativeChatSubagentEntry[],
+  attemptOf: GroupRowAttempts
+): RosterGroup {
+  const group: RosterGroup = {
+    groupId,
+    identity: claudeSubagentGroupIdentity(groupId),
+    entries: new Map(),
+    admittedEntries: entries.length,
+    claimedLabels: new Set(),
+    lastSerialized: JSON.stringify(claudeSubagentGroupBody(groupId, entries))
+  }
+  for (const entry of entries) {
+    group.claimedLabels.add(entry.label)
+    group.entries.set(entry.id, {
+      entry: { ...entry },
+      backgrounded: true,
+      toolUseId: null,
+      invocationIds: new Set(),
+      labelBase: entry.label,
+      attempt: attemptOf(entry.id),
+      invokedInEarlierRun: true
+    })
+  }
+  return group
 }
 
 /** The roster row: the structured block plus the plain sentence an older client
