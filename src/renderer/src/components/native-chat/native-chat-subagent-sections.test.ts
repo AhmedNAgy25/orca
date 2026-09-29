@@ -4,6 +4,8 @@ import type {
   NativeChatSubagentState
 } from '../../../../shared/native-chat-types'
 import { projectNativeChatTranscript } from '../../../../shared/native-chat-transcript-projection'
+import { nativeChatRowTurnKeys } from '../../../../shared/native-chat-turn-grouping'
+import { selectNativeChatActiveTurnKey } from '../../../../shared/native-chat-turn-status'
 import { compareMessages } from './native-chat-session-assembler'
 import {
   nativeChatRowsInTranscriptOrder,
@@ -59,8 +61,9 @@ function roster(id: string, agents: [string, string, NativeChatSubagentState][])
   )
 }
 
-function sectionsOf(rows: NativeChatMessage[]) {
-  const { conversation, subagentRows } = projectNativeChatTranscript(rows, compareMessages)
+/** `owned`: the host's turn attribution by row id, as the list gets it. */
+function sectionsOf(rows: NativeChatMessage[], owned?: ReadonlyMap<string, string>) {
+  const { conversation, subagentRows } = projectNativeChatTranscript(rows, compareMessages, owned)
   return { conversation, sections: nativeChatSubagentSections(conversation, subagentRows) }
 }
 
@@ -70,25 +73,17 @@ function slotsOf(
   rows: NativeChatMessage[],
   choices: Record<string, boolean> = {},
   isWorking = false,
-  rosters: Record<string, boolean> = {}
+  rosters: Record<string, boolean> = {},
+  owned?: ReadonlyMap<string, string>
 ): NativeChatTranscriptSlot[] {
-  const { conversation, sections } = sectionsOf(rows)
-  let turn: string | undefined
-  const turnKeys = conversation.map((message) => {
-    if (message.role === 'user') {
-      turn = message.id
-    }
-    return turn
-  })
+  const { conversation, sections } = sectionsOf(rows, owned)
   return buildNativeChatTranscriptSlots({
     messages: conversation,
-    turnKeys,
-    latestUserIndex: conversation.findLastIndex((message) => message.role === 'user'),
-    currentTurnKey: undefined,
+    turnKeys: nativeChatRowTurnKeys(conversation, owned),
+    activeTurnKey: selectNativeChatActiveTurnKey(conversation),
     receipts: new Map(),
     turnStatuses: { active: null, completedByTurn: {} },
     turnDiffs: new Map(),
-    showTurnStatus: true,
     expandedTurnKeys: new Set(),
     isWorking,
     lifecycleWorking: false,
@@ -592,6 +587,54 @@ describe("a subagent's edits in its turn's changed files", () => {
     const diff = nativeChatTurnDiffs(rows.messages, rows.turnKeys, sections.pathOf).get('ask')
     expect(diff?.files.map((file) => file.target)).toEqual([
       { messageId: 'child-edit', editKey: 'Diff:0', fileIndex: 0, subagentSections: ['task-1'] }
+    ])
+  })
+
+  // A send queued mid-turn lands among the running turn's rows; the host's turn
+  // records, not position, say the edit after it is still the running turn's.
+  it("counts an edit made mid-turn in the host's turn, and heads its section there", () => {
+    const rows = [
+      row('ask-1', say('edit it'), { role: 'user' }),
+      row('delegate', say('Delegating.')),
+      row('ask-2', say('and the tests?'), { role: 'user' }),
+      row('child-edit', edit, by('task-1')),
+      row('answer-1', say('Edited.')),
+      row('answer-2', say('Tests pass.'))
+    ]
+    const owned = new Map([
+      ['ask-1', 'ask-1'],
+      ['delegate', 'ask-1'],
+      ['ask-2', 'ask-2'],
+      ['child-edit', 'ask-1'],
+      ['answer-1', 'ask-1'],
+      ['answer-2', 'ask-2']
+    ])
+    const { conversation, sections } = sectionsOf(rows, owned)
+    const turnKeys = nativeChatRowTurnKeys(conversation, owned)
+    const merged = nativeChatRowsInTranscriptOrder(
+      conversation,
+      turnKeys,
+      nativeChatSubagentRowsInOrder(sections.rows)
+    )
+    const diffs = nativeChatTurnDiffs(merged.messages, merged.turnKeys, sections.pathOf)
+    expect(Array.from(diffs.keys())).toEqual(['ask-1'])
+    // No roster names it, so its head sits where its first row happened: among
+    // ask-1's rows, where the outline rail lights ask-1.
+    const turns = slotsOf(rows, {}, false, {}, owned).map((slot) => [
+      slot.kind === 'subagent'
+        ? `[${slot.agentId}]`
+        : slot.kind === 'message'
+          ? slot.message.id
+          : '',
+      slot.turnKey
+    ])
+    expect(turns).toEqual([
+      ['ask-1', 'ask-1'],
+      ['delegate', 'ask-1'],
+      ['ask-2', 'ask-2'],
+      ['[task-1]', 'ask-1'],
+      ['answer-1', 'ask-1'],
+      ['answer-2', 'ask-2']
     ])
   })
 })

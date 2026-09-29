@@ -15,6 +15,7 @@ import {
   foldStructuredAgentSubagentRoster,
   NO_STRUCTURED_AGENT_SUBAGENT_ROSTER
 } from '../../../../shared/structured-agent-session-subagent-roster'
+import { selectStructuredAgentTurnBars } from '../../../../shared/structured-agent-session-turn-timing'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { session, stubLayout } from './native-chat-windowing-test-harness'
 
@@ -197,6 +198,72 @@ describe("a subagent's rows in the transcript", () => {
     expect(screen.getByText('Edited file')).toBeInTheDocument()
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /explore the lane/, expanded: true })).toBeVisible()
+  })
+
+  // Rows are grouped by the host's turn records, so a subagent's edit counts in the
+  // turn that was running when it was made: not a send queued mid-turn, whose own turn
+  // had not opened, and in a turn keyed to its own record rather than the last prompt.
+  it("counts a subagent's edit in the turn the journal says it was made in", () => {
+    const say = (itemId: string, role: 'user' | 'assistant', text: string, sequence: number) =>
+      journalItem(itemId, { kind: 'message', role, blocks: [{ type: 'text', text }] }, sequence)
+    const turn = (turnId: string, userItemId: string, sequence: number) =>
+      journalItem(
+        `turn-${turnId}`,
+        { kind: 'turn', turnId, state: 'completed', userItemId, startedAt: sequence * 1000 },
+        sequence
+      )
+    const childEdit = (itemId: string, path: string, sequence: number) =>
+      journalItem(
+        itemId,
+        {
+          kind: 'diff',
+          path,
+          patch: { head: patch, truncated: false, digest: path, byteLength: patch.length }
+        },
+        sequence,
+        child
+      )
+    const [ask, spawn] = itemsWith('completed', false)
+    const items = [
+      ask!,
+      turn('1', 'ask', 2),
+      { ...spawn!, sequence: 3 },
+      say('ask-2', 'user', 'And the tests?', 4),
+      childEdit('child-edit', 'src/a.ts', 5),
+      say('answer-1', 'assistant', 'Edited a.', 6),
+      turn('2', 'ask-2', 7),
+      say('answer-2', 'assistant', 'Tests pass.', 8),
+      // Its opener is outside the loaded window, so the turn keys to its own record.
+      turn('3', 'older-send', 9),
+      childEdit('child-woke', 'src/b.ts', 10),
+      say('answer-3', 'assistant', 'Picked up the result.', 11)
+    ]
+    const { turnKeysByItemId } = selectStructuredAgentTurnBars(items, [], null)
+    render(
+      <NativeChatMessageList
+        session={session(projectStructuredItemsToNativeChat(items))}
+        journalItems={items}
+        turnKeysByItemId={turnKeysByItemId}
+        isWorking={false}
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+    const rollups = screen.getAllByRole('button', { name: /changed file/ })
+    expect(rollups.map((rollup) => rollup.textContent)).toEqual([
+      expect.stringMatching(/1 changed file/),
+      expect.stringMatching(/1 changed file/)
+    ])
+    const inOrder = [
+      screen.getByText('Edited a.'),
+      rollups[0]!,
+      screen.getByText('Tests pass.'),
+      screen.getByText('Picked up the result.'),
+      rollups[1]!
+    ]
+    for (const [index, node] of inOrder.slice(1).entries()) {
+      expect(inOrder[index]!.compareDocumentPosition(node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    }
   })
 
   it('reveals an edit under a roster list the reader closed', () => {

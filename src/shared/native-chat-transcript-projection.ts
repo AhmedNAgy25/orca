@@ -12,6 +12,7 @@ import { compareAgentJournalPositions } from './agent-session-journal-position'
 import { agentJournalItemSubagentId } from './agent-session-journal-producer'
 import { stripNoiseMessages } from './native-chat-noise'
 import { foldToolMessages } from './native-chat-tool-fold'
+import { nativeChatRowTurnKeys } from './native-chat-turn-grouping'
 
 /** Timestamp, then id. A null timestamp sorts first so a source that cannot supply
  *  one stays in place rather than jumping to the end. */
@@ -89,9 +90,12 @@ export function projectNativeChatTranscriptMessages(
   return projectNativeChatTranscript(messages, compare).conversation
 }
 
+/** `turnKeysByItemId`: the host's turn attribution, which the conversation's rows are
+ *  grouped by too, so a subagent's row sits in the same turn a parent row there would. */
 export function projectNativeChatTranscript(
   messages: readonly NativeChatMessage[],
-  compare: NativeChatMessageCompare = compareNativeChatTranscriptMessages
+  compare: NativeChatMessageCompare = compareNativeChatTranscriptMessages,
+  turnKeysByItemId?: ReadonlyMap<string, string> | null
 ): NativeChatTranscriptProjection {
   const sorted = sortedCopy(messages, compare)
   const own: NativeChatMessage[] = []
@@ -113,17 +117,14 @@ export function projectNativeChatTranscript(
   if (byAgent.size === 0) {
     return { conversation, subagentRows: NO_SUBAGENT_ROWS }
   }
+  // Only a user row the conversation draws opens a turn by position, never a subagent's.
   const turnStarts = new Set(
     conversation.filter((message) => message.role === 'user').map((message) => message.id)
   )
-  const turnOf = new Map<NativeChatMessage, string | undefined>()
-  let turnKey: string | undefined
-  for (const message of sorted) {
-    if (turnStarts.has(message.id)) {
-      turnKey = message.id
-    }
-    turnOf.set(message, turnKey)
-  }
+  const turnKeys = nativeChatRowTurnKeys(sorted, turnKeysByItemId, (message) =>
+    turnStarts.has(message.id)
+  )
+  const turnOf = new Map(sorted.map((message, index) => [message, turnKeys[index]]))
   const subagentRows = new Map<string, NativeChatSubagentRow[]>()
   for (const [agentId, rows] of byAgent) {
     // Folded one parent turn at a time: a run the subagent carries across a turn

@@ -71,6 +71,40 @@ describe("a subagent's rows are not the conversation's", () => {
     ])
   })
 
+  // Main's grouping rule, not position: a send made mid-turn does not own the rows
+  // written before its own turn opened, and a turn keyed to its record owns its rows.
+  it("takes each row's turn from the host's attribution, as the conversation's rows do", () => {
+    const rows = [
+      row('first', say('go'), { role: 'user' }),
+      row('child-start', say('Starting.'), child),
+      row('second', say('and then'), { role: 'user' }),
+      row('child-edit', call('Edit'), child),
+      row('child-woke', call('Write'), child)
+    ]
+    const owned = new Map([
+      ['first', 'first'],
+      ['child-start', 'first'],
+      ['second', 'second'],
+      ['child-edit', 'first'],
+      ['child-woke', 'turn-3-record']
+    ])
+    const projected = projectNativeChatTranscript(rows, undefined, owned).subagentRows.get('task-1')
+    expect(projected?.map(({ message, turnKey }) => [message.id, turnKey])).toEqual([
+      ['child-start', 'first'],
+      ['child-woke', 'turn-3-record']
+    ])
+    expect(projected?.[0]?.message.blocks).toEqual([...say('Starting.'), ...call('Edit')])
+  })
+
+  it("never lets a subagent's own prompt open a conversation turn", () => {
+    const rows = projectNativeChatTranscript([
+      row('ask', say('go'), { role: 'user' }),
+      row('child-prompt', say('Review the diff.'), { ...child, role: 'user' }),
+      row('child-look', say('Looking.'), child)
+    ]).subagentRows.get('task-1')
+    expect(rows?.every(({ turnKey }) => turnKey === 'ask')).toBe(true)
+  })
+
   it('projects a transcript that names no producer exactly as before', () => {
     const plain = transcript.map(({ agentId: _agentId, producerKind: _kind, ...rest }) => rest)
     const { conversation, subagentRows } = projectNativeChatTranscript(plain)

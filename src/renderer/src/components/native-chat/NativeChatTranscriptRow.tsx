@@ -17,7 +17,6 @@ import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-t
  *  object so a row's props change only when that row's own slot does. */
 export type NativeChatTranscriptRowContext = {
   expandSignal: boolean
-  showTurnStatus: boolean
   revealedDiff: NativeChatDiffReveal | null
   taskListPredecessors: ReadonlyMap<string, NativeChatTaskListPredecessors>
   expandedTurnIds: ReadonlySet<string>
@@ -76,8 +75,20 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
   const { message, turnKey, status, receipt, turnDiff } = slot
   const predecessors = context.taskListPredecessors.get(message.id)
   const expanded = turnKey ? context.expandedTurnIds.has(turnKey) : undefined
+  const statusRow = status ? (
+    <NativeChatWorkingStatus
+      startedAt={status.startedAt}
+      workedSeconds={status.workedSeconds}
+      expanded={expanded === true}
+      onToggleExpanded={
+        slot.turnFolds && turnKey ? () => context.onToggleExpandedTurn(turnKey) : undefined
+      }
+    />
+  ) : null
   return (
     <div className={cn('flex flex-col gap-5', sectionClassName)}>
+      {/* A turn with no user bubble carries its bar above its first row. */}
+      {slot.statusAbove ? statusRow : null}
       {receipt ? (
         <NativeChatResolutionReceipt body={receipt} disclosureId={message.id} />
       ) : (
@@ -95,23 +106,13 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           onLinkClick={context.onLinkClick}
           allowFileUriLinks={context.allowFileUriLinks}
           deliveryNotice={context.deliveryNotices?.get(message.id)}
-          structuredActivityUi={context.showTurnStatus}
           folded={slot.folded}
           subagentRoster={slot.subagentRoster}
           subagentDisclosure={context.subagentDisclosure}
           runtimeContext={context.runtimeContext}
         />
       )}
-      {status ? (
-        <NativeChatWorkingStatus
-          startedAt={status.startedAt}
-          workedSeconds={status.workedSeconds}
-          expanded={expanded === true}
-          onToggleExpanded={
-            slot.turnFolds && turnKey ? () => context.onToggleExpandedTurn(turnKey) : undefined
-          }
-        />
-      ) : null}
+      {slot.statusAbove ? null : statusRow}
       {turnDiff ? (
         <NativeChatTurnDiffRollup diff={turnDiff} onReveal={context.onRevealDiff} />
       ) : null}
