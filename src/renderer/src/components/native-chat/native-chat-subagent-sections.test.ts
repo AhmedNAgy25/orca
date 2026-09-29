@@ -62,7 +62,11 @@ function sectionsOf(rows: NativeChatMessage[]) {
   return { conversation, sections: nativeChatSubagentSections(conversation, subagentRows) }
 }
 
-function slotsOf(rows: NativeChatMessage[], expanded: string[] = []): NativeChatTranscriptSlot[] {
+/** `choices`: the sections the reader opened (true) or closed (false) by hand. */
+function slotsOf(
+  rows: NativeChatMessage[],
+  choices: Record<string, boolean> = {}
+): NativeChatTranscriptSlot[] {
   const { conversation, sections } = sectionsOf(rows)
   let turn: string | undefined
   const turnKeys = conversation.map((message) => {
@@ -84,7 +88,7 @@ function slotsOf(rows: NativeChatMessage[], expanded: string[] = []): NativeChat
     isWorking: false,
     lifecycleWorking: false,
     subagentSections: sections,
-    expandedSubagentIds: new Set(expanded)
+    subagentSectionChoices: new Map(Object.entries(choices))
   })
 }
 
@@ -97,18 +101,31 @@ function outline(slots: readonly NativeChatTranscriptSlot[]): string[] {
   )
 }
 
-describe("a subagent's rows live in its own section", () => {
-  const transcript = [
+function transcriptWith(state: NativeChatSubagentState): NativeChatMessage[] {
+  return [
     row('ask', say('review the PR'), { role: 'user' }),
-    roster('spawn', [['task-1', 'explore the lane', 'working']]),
+    roster('spawn', [['task-1', 'explore the lane', state]]),
     row('child-look', say('Looking at the diff.'), by('task-1')),
     row('child-grep', call('Grep'), by('task-1')),
     row('answer', say('Delegated; the summary follows.')),
     row('child-verdict', say('The PR is CLEAN.'), by('task-1'))
   ]
+}
 
-  it('draws none of them until the reader opens the agent from its roster', () => {
-    const slots = slotsOf(transcript)
+const OPEN_UNDER_ROSTER = [
+  'ask',
+  'spawn',
+  '[task-1 open]',
+  '>child-look',
+  '>child-verdict',
+  'answer'
+]
+
+describe("a subagent's rows live in its own section", () => {
+  const settled = transcriptWith('completed')
+
+  it("draws none of a settled agent's rows until the reader opens it from its roster", () => {
+    const slots = slotsOf(settled)
     expect(outline(slots)).toEqual(['ask', 'spawn', 'answer'])
     const spawn = slots[1]
     expect(spawn?.kind === 'message' ? spawn.subagentSections : null).toEqual(
@@ -117,22 +134,15 @@ describe("a subagent's rows live in its own section", () => {
   })
 
   it('opens them under the roster that names the agent, headed by its name', () => {
-    const slots = slotsOf(transcript, ['task-1'])
-    expect(outline(slots)).toEqual([
-      'ask',
-      'spawn',
-      '[task-1 open]',
-      '>child-look',
-      '>child-verdict',
-      'answer'
-    ])
+    const slots = slotsOf(settled, { 'task-1': true })
+    expect(outline(slots)).toEqual(OPEN_UNDER_ROSTER)
     const head = slots[2]
     expect(head?.kind === 'subagent' ? head.entry?.label : null).toBe('explore the lane')
     expect(new Set(slots.map(nativeChatSlotKey)).size).toBe(slots.length)
   })
 
   it("keeps the agent's own live frontier while the roster says it works", () => {
-    const live = slotsOf(transcript, ['task-1']).filter(
+    const live = slotsOf(transcriptWith('working')).filter(
       (slot) => slot.kind === 'message' && slot.trailingRun
     )
     expect(
@@ -153,8 +163,9 @@ describe("a subagent's rows live in its own section", () => {
       row('answer', say('Done.')),
       row('orphan-more', say('Still looking.'), by('toolu_1'))
     ]
+    // No roster says whether it works, so nothing opens it but the reader.
     expect(outline(slotsOf(unlisted))).toEqual(['ask', 'delegate', '[toolu_1]', 'answer'])
-    expect(outline(slotsOf(unlisted, ['toolu_1']))).toEqual([
+    expect(outline(slotsOf(unlisted, { toolu_1: true }))).toEqual([
       'ask',
       'delegate',
       '[toolu_1 open]',
@@ -166,11 +177,11 @@ describe("a subagent's rows live in its own section", () => {
 
   it("opens a grandchild no roster names inside its spawner's section", () => {
     const nested = [
-      ...transcript,
+      ...settled,
       row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1')),
       row('child-last', say('Wrapping up.'), by('task-1'))
     ]
-    expect(outline(slotsOf(nested, ['task-1']))).toEqual([
+    expect(outline(slotsOf(nested, { 'task-1': true }))).toEqual([
       'ask',
       'spawn',
       '[task-1 open]',
@@ -180,7 +191,7 @@ describe("a subagent's rows live in its own section", () => {
       '>child-last',
       'answer'
     ])
-    expect(outline(slotsOf(nested, ['task-1', 'task-2'])).slice(5, 7)).toEqual([
+    expect(outline(slotsOf(nested, { 'task-1': true, 'task-2': true })).slice(5, 7)).toEqual([
       '>[task-2 open]',
       '>>grandchild-read'
     ])
@@ -194,6 +205,55 @@ describe("a subagent's rows live in its own section", () => {
       row('b-row', say('B.'), by('task-b', 'task-a'))
     ]
     expect(outline(slotsOf(looped))).toEqual(['ask', '[task-a]', '[task-b]'])
+  })
+})
+
+describe("a live subagent's section is open while it works", () => {
+  it('opens while the agent works and closes once it settles', () => {
+    expect(outline(slotsOf(transcriptWith('working')))).toEqual(OPEN_UNDER_ROSTER)
+    expect(outline(slotsOf(transcriptWith('completed')))).toEqual(['ask', 'spawn', 'answer'])
+  })
+
+  it('stays closed while it works once the reader closed it', () => {
+    expect(outline(slotsOf(transcriptWith('working'), { 'task-1': false }))).toEqual([
+      'ask',
+      'spawn',
+      'answer'
+    ])
+  })
+
+  it('stays open after it settles once the reader opened it', () => {
+    expect(outline(slotsOf(transcriptWith('completed'), { 'task-1': true }))).toEqual(
+      OPEN_UNDER_ROSTER
+    )
+  })
+
+  it("opens a live grandchild inside its open spawner's section, and only while it works", () => {
+    const nested = (grandchild: NativeChatSubagentState) => [
+      row('ask', say('go'), { role: 'user' }),
+      roster('spawn', [
+        ['task-1', 'lead the review', 'working'],
+        ['task-2', 'read one file', grandchild]
+      ]),
+      row('child-look', say('Delegating a read.'), by('task-1')),
+      row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1')),
+      row('child-last', say('Wrapping up.'), by('task-1'))
+    ]
+    expect(outline(slotsOf(nested('working')))).toEqual([
+      'ask',
+      'spawn',
+      '[task-1 open]',
+      '>child-look',
+      '>[task-2 open]',
+      '>>grandchild-read',
+      '>child-last'
+    ])
+    expect(outline(slotsOf(nested('completed'))).slice(4)).toEqual(['>[task-2]', '>child-last'])
+    // Its section is its spawner's to hold, so its roster entry opens nothing.
+    const spawn = slotsOf(nested('working'))[1]
+    expect(spawn?.kind === 'message' ? spawn.subagentSections : null).toEqual(
+      new Map([['task-1', true]])
+    )
   })
 })
 

@@ -140,8 +140,8 @@ export function NativeChatMessageList({
   }, [journalItems, projection.conversation])
   const {
     sections: subagentSections,
-    expandedSubagentIds,
-    toggleSubagentSection,
+    subagentSectionChoices,
+    setSubagentSectionOpen,
     openSubagentSections
   } = useNativeChatSubagentSections(messages, projection.subagentRows)
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
@@ -200,11 +200,10 @@ export function NativeChatMessageList({
         isWorking,
         lifecycleWorking,
         subagentSections,
-        expandedSubagentIds
+        subagentSectionChoices
       }),
     [
       currentTurnKey,
-      expandedSubagentIds,
       expandedTurnIds,
       isWorking,
       latestUserIndex,
@@ -212,6 +211,7 @@ export function NativeChatMessageList({
       messages,
       receipts,
       showTurnStatus,
+      subagentSectionChoices,
       subagentSections,
       turnDiffs,
       turnKeys,
@@ -339,7 +339,7 @@ export function NativeChatMessageList({
       runtimeContext,
       onLinkClick,
       onToggleExpandedTurn: toggleExpandedTurn,
-      onToggleSubagentSection: toggleSubagentSection,
+      onSetSubagentSectionOpen: setSubagentSectionOpen,
       onScrollMessageToTop: scrollMessageToTop,
       onRevealDiff: revealDiff
     }),
@@ -355,8 +355,8 @@ export function NativeChatMessageList({
       scrollMessageToTop,
       showTurnStatus,
       taskListPredecessors,
-      toggleExpandedTurn,
-      toggleSubagentSection
+      setSubagentSectionOpen,
+      toggleExpandedTurn
     ]
   )
 

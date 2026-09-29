@@ -9,6 +9,7 @@ import type {
   AgentJournalProducerLinkage,
   AgentJournalRenderItem
 } from '../../../../shared/agent-session-journal-types'
+import type { NativeChatSubagentState } from '../../../../shared/native-chat-types'
 import { projectStructuredItemsToNativeChat } from '../../../../shared/structured-agent-session-projection'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { session, stubLayout } from './native-chat-windowing-test-harness'
@@ -26,7 +27,7 @@ function journalItem(
 
 const child: AgentJournalProducerLinkage = { agentId: 'task-1', producerKind: 'agent' }
 const patch = '@@ -1 +1 @@\n-before\n+after'
-const items: AgentJournalRenderItem[] = [
+const itemsWith = (state: NativeChatSubagentState): AgentJournalRenderItem[] => [
   journalItem(
     'ask',
     { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Review it' }] },
@@ -41,7 +42,7 @@ const items: AgentJournalRenderItem[] = [
         {
           type: 'subagent-group',
           groupId: 'group-1',
-          agents: [{ id: 'task-1', label: 'explore the lane', state: 'completed' }]
+          agents: [{ id: 'task-1', label: 'explore the lane', state }]
         }
       ]
     },
@@ -74,8 +75,9 @@ const items: AgentJournalRenderItem[] = [
   )
 ]
 
-function renderList() {
-  return render(
+function listOf(state: NativeChatSubagentState): React.JSX.Element {
+  const items = itemsWith(state)
+  return (
     <NativeChatMessageList
       session={session(projectStructuredItemsToNativeChat(items))}
       journalItems={items}
@@ -85,6 +87,8 @@ function renderList() {
     />
   )
 }
+
+const renderList = () => render(listOf('completed'))
 
 describe("a subagent's rows in the transcript", () => {
   let restoreLayout = (): void => {}
@@ -124,5 +128,24 @@ describe("a subagent's rows in the transcript", () => {
     expect(
       screen.getByRole('button', { name: /explore the lane/, expanded: true })
     ).toBeInTheDocument()
+  })
+
+  it('opens a working subagent on its own and closes it once it settles', () => {
+    const { rerender } = render(listOf('working'))
+    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+    rerender(listOf('completed'))
+    expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
+  })
+
+  it("keeps the reader's choice over the agent's state, in either direction", () => {
+    const { rerender } = render(listOf('working'))
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: true }))
+    rerender(listOf('working'))
+    expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Kicked off 1 subagent/ }))
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
+    rerender(listOf('completed'))
+    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
   })
 })

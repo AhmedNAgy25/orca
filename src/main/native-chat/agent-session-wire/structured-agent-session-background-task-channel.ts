@@ -4,6 +4,7 @@ import type {
   AgentSessionHistoryResult
 } from '../../../shared/agent-session-wire'
 import { readStructuredAgentSessionHistoryResult } from './structured-agent-session-history-result'
+import type { AgentSessionHistoryScope } from './agent-session-history-page'
 import type {
   AgentSessionSubscribers,
   AgentSessionSubscribeInput
@@ -28,11 +29,16 @@ export class StructuredAgentSessionBackgroundTaskChannel {
     private readonly onPublished: (sessionId: string) => void
   ) {}
 
-  async history(request: AgentSessionHistoryRequest): Promise<AgentSessionHistoryResult> {
+  /** `scope` is for in-process readers; a wire request reads every agent's rows. */
+  async history(
+    request: AgentSessionHistoryRequest,
+    scope?: AgentSessionHistoryScope
+  ): Promise<AgentSessionHistoryResult> {
     const result = readStructuredAgentSessionHistoryResult({
       journal: (await this.conversation(request.sessionId)).journal,
       record: this.deps.store.getRecord(request.sessionId),
-      request
+      request,
+      scope
     })
     const backgroundTasks = this.state(request.sessionId)
     const hostNow = this.deps.now?.() ?? Date.now()

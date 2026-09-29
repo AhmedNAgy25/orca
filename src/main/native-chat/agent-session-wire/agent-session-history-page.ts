@@ -8,6 +8,7 @@
 // `after` is the only direction that can answer `cursor_compacted`.
 
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
 import type {
   AgentJournalCursor,
   AgentJournalRenderItem,
@@ -43,12 +44,18 @@ export function resolveHistoryLimit(limit: number | undefined): number {
   return Math.min(AGENT_SESSION_HISTORY_MAX_LIMIT, Math.max(1, Math.floor(limit)))
 }
 
+/** Whose rows a backward read windows over. A reader of the session's own agent
+ *  alone windows over only its rows, so a subagent's burst cannot crowd them off
+ *  the page. In-process only: no wire request carries it. */
+export type AgentSessionHistoryScope = 'every-agent' | 'own-agent'
+
 export function readAgentSessionHistory(
   journal: AgentSessionJournal,
   request: AgentSessionHistoryRequest,
   /** Reduced state to read against. A synchronous multi-page catch-up passes one
    *  snapshot for the whole run so each page costs its own rows, not the timeline. */
-  snapshot: AgentJournalSnapshot = journal.snapshot()
+  snapshot: AgentJournalSnapshot = journal.snapshot(),
+  scope: AgentSessionHistoryScope = 'every-agent'
 ): AgentSessionHistoryResult {
   if (journal.isReadOnly) {
     return historyReset(snapshot, 'schema_unreadable')
@@ -66,9 +73,9 @@ export function readAgentSessionHistory(
       return historyReset(snapshot, 'cursor_ahead')
     }
   }
-  const older = cursor
-    ? snapshot.items.filter((item) => item.sequence < cursor.sequence)
-    : snapshot.items
+  const scoped =
+    scope === 'own-agent' ? snapshot.items.filter(isRootAgentJournalItem) : snapshot.items
+  const older = cursor ? scoped.filter((item) => item.sequence < cursor.sequence) : scoped
   const windowed = newestWholeSequenceGroups(older, limit)
   const { items, dropped } = boundHistoryItemsByBytes(
     windowed,
@@ -83,7 +90,7 @@ export function readAgentSessionHistory(
       direction: request.direction,
       items,
       hasOlder: older.length > windowed.length || dropped > 0,
-      hasNewer: older.length < snapshot.items.length,
+      hasNewer: older.length < scoped.length,
       fallbackCursor: cursor ?? { epoch: snapshot.cursor.epoch, sequence: 0 },
       nextCursor: items[0]
         ? { epoch: snapshot.cursor.epoch, sequence: items[0].sequence }

@@ -1,22 +1,23 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
-import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
+import { chooseNativeChatExpanded } from './native-chat-expanded-keys'
 import {
   nativeChatSubagentSections,
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
 
-const NONE_OPEN: ReadonlySet<string> = new Set()
+const NO_CHOICES: ReadonlyMap<string, boolean> = new Map()
 
-/** The transcript's subagent sections and which of them the reader has open. */
+/** The transcript's subagent sections, and the ones the reader opened or closed by
+ *  hand. Everything else follows its agent: open while it works, closed once it settles. */
 export function useNativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
   subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>
 ): {
   sections: NativeChatSubagentSections
-  expandedSubagentIds: ReadonlySet<string>
-  toggleSubagentSection: (agentId: string) => void
+  subagentSectionChoices: ReadonlyMap<string, boolean>
+  setSubagentSectionOpen: (agentId: string, open: boolean) => void
   /** Opens the sections a row sits in, so a reveal of that row can land. */
   openSubagentSections: (agentIds: readonly string[]) => void
 } {
@@ -24,16 +25,17 @@ export function useNativeChatSubagentSections(
     () => nativeChatSubagentSections(conversation, subagentRows),
     [conversation, subagentRows]
   )
-  const [expandedSubagentIds, setExpandedSubagentIds] = useState(NONE_OPEN)
-  const toggleSubagentSection = useCallback((agentId: string) => {
-    setExpandedSubagentIds((current) => toggleNativeChatExpandedKey(current, agentId))
+  const [subagentSectionChoices, setChoices] = useState(NO_CHOICES)
+  const setSubagentSectionOpen = useCallback((agentId: string, open: boolean) => {
+    setChoices((current) => chooseNativeChatExpanded(current, agentId, open))
   }, [])
   const openSubagentSections = useCallback((agentIds: readonly string[]) => {
-    setExpandedSubagentIds((current) =>
-      agentIds.every((agentId) => current.has(agentId))
-        ? current
-        : new Set([...current, ...agentIds])
+    setChoices((current) =>
+      agentIds.reduce(
+        (choices, agentId) => chooseNativeChatExpanded(choices, agentId, true),
+        current
+      )
     )
   }, [])
-  return { sections, expandedSubagentIds, toggleSubagentSection, openSubagentSections }
+  return { sections, subagentSectionChoices, setSubagentSectionOpen, openSubagentSections }
 }

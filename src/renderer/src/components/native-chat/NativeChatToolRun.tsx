@@ -54,7 +54,7 @@ export function NativeChatToolRun({
   onRevealDiff,
   subagentGroups = NO_SUBAGENT_GROUPS,
   subagentSections,
-  onToggleSubagentSection,
+  onSetSubagentSectionOpen,
   backgroundTasks = NO_BACKGROUND_TASKS,
   expandSignal,
   activeTurnIsWorking,
@@ -73,7 +73,7 @@ export function NativeChatToolRun({
   subagentGroups?: NativeChatSubagentGroupBlock[]
   /** The rosters' children whose rows open below this run, and whether each is open. */
   subagentSections?: ReadonlyMap<string, boolean>
-  onToggleSubagentSection?: (agentId: string) => void
+  onSetSubagentSectionOpen?: (agentId: string, open: boolean) => void
   /** Background tasks that belong with this run's activity, one row each. */
   backgroundTasks?: NativeChatBackgroundTaskBlock[]
   /** Legacy view-level default; production native-chat entry points pass false. */
@@ -115,7 +115,7 @@ export function NativeChatToolRun({
         key={group.groupId}
         block={group}
         sections={subagentSections}
-        onToggleSection={onToggleSubagentSection}
+        onSetSectionOpen={onSetSubagentSectionOpen}
       />
     ))
   // Neither a roster nor a background task is tool activity, so both take every

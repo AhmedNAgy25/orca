@@ -1,11 +1,11 @@
 // Where each subagent's rows live in the transcript.
 //
-// A subagent's rows are not the conversation's: they sit in a section of their own
-// that the reader opens from the agent. A subagent a loaded roster names opens
-// under that roster row, keyed by the agent id the roster entry and its rows share.
-// One no loaded roster names — its spawn is on an older page, or it was never
-// announced — still owns its rows: its section opens where its first row happened,
-// inside the section of the agent that spawned it, or in the conversation.
+// A subagent's rows are not the conversation's: they sit in a section of their own,
+// keyed by the agent id its roster entry and its rows share. One the session spawned
+// opens under the roster row that names it. One another subagent spawned opens
+// inside that subagent's section, where its first row happened. One no loaded roster
+// names — its spawn is on an older page, or it was never announced — opens where its
+// first row happened, in the conversation.
 
 import {
   isSubagentGroupBlock,
@@ -22,9 +22,9 @@ export type NativeChatSubagentSections = {
   entries: ReadonlyMap<string, NativeChatSubagentEntry>
   /** Roster row id → the subagents whose sections open under it, in roster order. */
   anchoredAt: ReadonlyMap<string, readonly string[]>
-  /** Subagents no loaded roster names, by the section they open in (null: the
-   *  conversation), in the order of their first rows. */
-  unlisted: ReadonlyMap<string | null, readonly string[]>
+  /** Every other subagent, by the section it opens in (null: the conversation), in
+   *  the order of their first rows. */
+  openAt: ReadonlyMap<string | null, readonly string[]>
   /** Row id → the sections enclosing it, outermost first. */
   pathOf: ReadonlyMap<string, readonly string[]>
 }
@@ -33,7 +33,7 @@ export const NO_NATIVE_CHAT_SUBAGENT_SECTIONS: NativeChatSubagentSections = {
   rows: new Map(),
   entries: new Map(),
   anchoredAt: new Map(),
-  unlisted: new Map(),
+  openAt: new Map(),
   pathOf: new Map()
 }
 
@@ -46,64 +46,65 @@ export function nativeChatSubagentSections(
     return NO_NATIVE_CHAT_SUBAGENT_SECTIONS
   }
   const entries = new Map<string, NativeChatSubagentEntry>()
-  const anchoredAt = new Map<string, string[]>()
+  const rosterOf = new Map<string, string>()
   for (const message of conversation) {
     for (const block of message.blocks) {
       if (!isSubagentGroupBlock(block)) {
         continue
       }
       for (const agent of block.agents) {
-        if (entries.has(agent.id) || !rows.has(agent.id)) {
-          continue
-        }
-        entries.set(agent.id, agent)
-        const anchored = anchoredAt.get(message.id)
-        if (anchored) {
-          anchored.push(agent.id)
-        } else {
-          anchoredAt.set(message.id, [agent.id])
+        if (!entries.has(agent.id) && rows.has(agent.id)) {
+          entries.set(agent.id, agent)
+          rosterOf.set(agent.id, message.id)
         }
       }
     }
   }
   const firstRow = (agentId: string): NativeChatMessage => rows.get(agentId)![0]!.message
-  // The agent that spawned an unlisted one, when that agent has a section to hold it.
+  // The subagent that spawned this one, when it has a section to hold it.
   const spawnerOf = (agentId: string): string | null => {
     const parent = firstRow(agentId).parentAgentId
-    return parent !== undefined && parent !== agentId && (entries.has(parent) || rows.has(parent))
-      ? parent
-      : null
+    return parent !== undefined && parent !== agentId && rows.has(parent) ? parent : null
   }
   // A chain of spawners that loops back has no outside to open in.
   const scopeOf = (agentId: string): string | null => {
     const spawner = spawnerOf(agentId)
     const seen = new Set([agentId])
-    for (let current = spawner; current !== null && !entries.has(current);) {
+    for (let current = spawner; current !== null; current = spawnerOf(current)) {
       if (seen.has(current)) {
         return null
       }
       seen.add(current)
-      current = spawnerOf(current)
     }
     return spawner
   }
-  const unlisted = new Map<string | null, string[]>()
   const scopes = new Map<string, string | null>()
+  const openAt = new Map<string | null, string[]>()
   for (const agentId of rows.keys()) {
-    if (entries.has(agentId)) {
-      continue
-    }
     const scope = scopeOf(agentId)
     scopes.set(agentId, scope)
-    const inScope = unlisted.get(scope)
-    if (inScope) {
-      inScope.push(agentId)
-    } else {
-      unlisted.set(scope, [agentId])
+    if (scope !== null || !entries.has(agentId)) {
+      const inScope = openAt.get(scope)
+      if (inScope) {
+        inScope.push(agentId)
+      } else {
+        openAt.set(scope, [agentId])
+      }
     }
   }
-  for (const inScope of unlisted.values()) {
+  for (const inScope of openAt.values()) {
     inScope.sort((a, b) => compareMessages(firstRow(a), firstRow(b)))
+  }
+  const anchoredAt = new Map<string, string[]>()
+  for (const [agentId, rosterId] of rosterOf) {
+    if (scopes.get(agentId) === null) {
+      const anchored = anchoredAt.get(rosterId)
+      if (anchored) {
+        anchored.push(agentId)
+      } else {
+        anchoredAt.set(rosterId, [agentId])
+      }
+    }
   }
   const paths = new Map<string, readonly string[]>()
   const pathTo = (agentId: string): readonly string[] => {
@@ -123,7 +124,7 @@ export function nativeChatSubagentSections(
       pathOf.set(row.message.id, path)
     }
   }
-  return { rows, entries, anchoredAt, unlisted, pathOf }
+  return { rows, entries, anchoredAt, openAt, pathOf }
 }
 
 /** Every row with its turn, the conversation's and each subagent's together, in

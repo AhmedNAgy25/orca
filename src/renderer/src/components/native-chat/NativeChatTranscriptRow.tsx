@@ -25,7 +25,7 @@ export type NativeChatTranscriptRowContext = {
   runtimeContext?: RuntimeFileOperationArgs | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   onToggleExpandedTurn: (turnKey: string) => void
-  onToggleSubagentSection: (agentId: string) => void
+  onSetSubagentSectionOpen: (agentId: string, open: boolean) => void
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
 }
@@ -55,7 +55,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           agentId={slot.agentId}
           entry={slot.entry}
           expanded={slot.expanded}
-          onToggle={context.onToggleSubagentSection}
+          onSetOpen={context.onSetSubagentSectionOpen}
         />
       </div>
     )
@@ -85,7 +85,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           structuredActivityUi={context.showTurnStatus}
           folded={slot.folded}
           subagentSections={slot.subagentSections}
-          onToggleSubagentSection={context.onToggleSubagentSection}
+          onSetSubagentSectionOpen={context.onSetSubagentSectionOpen}
           runtimeContext={context.runtimeContext}
         />
       )}

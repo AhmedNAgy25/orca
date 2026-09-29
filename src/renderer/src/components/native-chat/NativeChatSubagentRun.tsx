@@ -147,8 +147,9 @@ function SubagentElapsed({
 
 /** One spawn group: how many children are working, their settled verdict, and
  *  the tokens they consumed. Each child is one entry here; the child's own rows
- *  are never the conversation's, and an entry that has any opens them in a
- *  section of their own below this row.
+ *  are never the conversation's. A child the session spawned shows them in a
+ *  section below this row, open while it works and closed once it settles; its
+ *  entry is where the reader overrides that.
  *
  *  Every state is drawn exactly as the journal recorded it. Turn state is NOT
  *  consulted: `spawn_agent` children outlive the turn that spawned them and keep
@@ -160,12 +161,12 @@ function SubagentElapsed({
 export function NativeChatSubagentRun({
   block,
   sections,
-  onToggleSection
+  onSetSectionOpen
 }: {
   block: NativeChatSubagentGroupBlock
   /** The children whose rows open below this row, and whether each is open. */
   sections?: ReadonlyMap<string, boolean>
-  onToggleSection?: (agentId: string) => void
+  onSetSectionOpen?: (agentId: string, open: boolean) => void
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const agents = block.agents
@@ -281,7 +282,7 @@ export function NativeChatSubagentRun({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => onToggleSection?.(agent.id)}
+                    onClick={() => onSetSectionOpen?.(agent.id, !sectionOpen)}
                     aria-expanded={sectionOpen}
                     className="group/subagent-entry flex w-full items-center gap-1.5 rounded-md py-0.5 text-left hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
                   >

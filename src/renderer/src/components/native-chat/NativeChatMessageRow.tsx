@@ -48,7 +48,7 @@ export const MessageRow = memo(function MessageRow({
   structuredActivityUi = true,
   folded = false,
   subagentSections,
-  onToggleSubagentSection,
+  onSetSubagentSectionOpen,
   runtimeContext
 }: {
   message: NativeChatMessage
@@ -69,7 +69,7 @@ export const MessageRow = memo(function MessageRow({
   folded?: boolean
   /** On a roster row: the subagents whose rows open below it, and whether each is open. */
   subagentSections?: ReadonlyMap<string, boolean>
-  onToggleSubagentSection?: (agentId: string) => void
+  onSetSubagentSectionOpen?: (agentId: string, open: boolean) => void
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element | null {
   const rowRef = useRef<HTMLDivElement | null>(null)
@@ -235,7 +235,7 @@ export const MessageRow = memo(function MessageRow({
           onLinkClick={onLinkClick}
           subagentGroups={subagentGroups}
           subagentSections={subagentSections}
-          onToggleSubagentSection={onToggleSubagentSection}
+          onSetSubagentSectionOpen={onSetSubagentSectionOpen}
           backgroundTasks={backgroundTasks}
           expandSignal={expandSignal}
           activeTurnIsWorking={activeTurnIsWorking}

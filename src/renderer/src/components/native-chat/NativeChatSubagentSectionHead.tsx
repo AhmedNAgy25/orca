@@ -12,18 +12,18 @@ export function NativeChatSubagentSectionHead({
   agentId,
   entry,
   expanded,
-  onToggle
+  onSetOpen
 }: {
   agentId: string
   entry: NativeChatSubagentEntry | undefined
   expanded: boolean
-  onToggle: (agentId: string) => void
+  onSetOpen: (agentId: string, open: boolean) => void
 }): React.JSX.Element {
   const state = entry === undefined ? null : normalizeSubagentState(entry.state)
   return (
     <button
       type="button"
-      onClick={() => onToggle(agentId)}
+      onClick={() => onSetOpen(agentId, !expanded)}
       aria-expanded={expanded}
       className="group/subagent-section flex min-h-6 w-full items-center gap-1.5 rounded-md py-0.5 text-left text-muted-foreground hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
     >
