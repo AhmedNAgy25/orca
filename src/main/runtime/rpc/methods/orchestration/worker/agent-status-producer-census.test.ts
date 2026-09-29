@@ -45,7 +45,7 @@ import { agentHookServer } from '../../../../../agent-hooks/server'
 import { OrchestrationDb } from '../../../../orchestration/db'
 import { OrcaRuntimeService } from '../../../../orca-runtime'
 import { ORCHESTRATION_WORKER_LIST_METHOD } from './worker-list-method'
-import { projectFleetWorkerPage } from './worker-observation'
+import { projectFleetWorkerPage } from './worker-list-projection'
 
 /**
  * Census of every production site in `src/main` that turns hook-server agent-status rows into
@@ -130,7 +130,7 @@ const CENSUS: readonly CensusRow[] = [
     role: 'worker-list fleet verdict (driven below)'
   },
   {
-    path: 'main/runtime/rpc/methods/orchestration/worker/worker-observation.ts',
+    path: 'main/runtime/rpc/methods/orchestration/worker/worker-list-projection.ts',
     kind: 'consumes',
     role: 'worker-show fleet verdict (driven below)'
   },
@@ -291,14 +291,14 @@ describe('agent status producer census', () => {
     }
   })
 
-  it('reads live on worker-show from a hook row that carries only a pane key', () => {
+  it('reads live on worker-show from a hook row that carries only a pane key', async () => {
     const db = new OrchestrationDb(':memory:')
     try {
       seedWorker(db)
       const runtime = censusRuntime()
       runtime.setOrchestrationDb(db)
 
-      const page = projectFleetWorkerPage(runtime, db, DISPATCH_ID)
+      const page = await projectFleetWorkerPage(runtime, db, DISPATCH_ID)
 
       expect(page?.workers[0]?.liveness).toMatchObject({
         verdict: 'live',
