@@ -27,7 +27,7 @@ function formatSubagentTokens(tokens: number): string {
  *  larger group always carries the count, because "working" alone would not say
  *  how many of the children it covers. `completed` never takes one: every child
  *  finishing is the whole group finishing. */
-export function subagentStateLabel(
+function subagentStateLabel(
   state: NativeChatSubagentState,
   count: number,
   groupTotal: number

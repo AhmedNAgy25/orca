@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
 import { toggleNativeChatExpandedKey } from './native-chat-expanded-keys'
@@ -17,29 +17,23 @@ export function useNativeChatSubagentSections(
   sections: NativeChatSubagentSections
   expandedSubagentIds: ReadonlySet<string>
   toggleSubagentSection: (agentId: string) => void
-  /** Opens every section enclosing a row, so a reveal of that row can land. */
-  openSubagentSectionsAround: (messageId: string) => void
+  /** Opens the sections a row sits in, so a reveal of that row can land. */
+  openSubagentSections: (agentIds: readonly string[]) => void
 } {
   const sections = useMemo(
     () => nativeChatSubagentSections(conversation, subagentRows),
     [conversation, subagentRows]
   )
   const [expandedSubagentIds, setExpandedSubagentIds] = useState(NONE_OPEN)
-  // Read at reveal time, so the callback keeps one identity across stream frames.
-  const sectionsRef = useRef(sections)
-  sectionsRef.current = sections
   const toggleSubagentSection = useCallback((agentId: string) => {
     setExpandedSubagentIds((current) => toggleNativeChatExpandedKey(current, agentId))
   }, [])
-  const openSubagentSectionsAround = useCallback((messageId: string) => {
-    const enclosing = sectionsRef.current.pathOf.get(messageId)
-    if (enclosing) {
-      setExpandedSubagentIds((current) =>
-        enclosing.every((agentId) => current.has(agentId))
-          ? current
-          : new Set([...current, ...enclosing])
-      )
-    }
+  const openSubagentSections = useCallback((agentIds: readonly string[]) => {
+    setExpandedSubagentIds((current) =>
+      agentIds.every((agentId) => current.has(agentId))
+        ? current
+        : new Set([...current, ...agentIds])
+    )
   }, [])
-  return { sections, expandedSubagentIds, toggleSubagentSection, openSubagentSectionsAround }
+  return { sections, expandedSubagentIds, toggleSubagentSection, openSubagentSections }
 }

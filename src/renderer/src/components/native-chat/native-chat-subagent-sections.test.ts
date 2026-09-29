@@ -204,7 +204,7 @@ describe("a subagent's edits in its turn's changed files", () => {
     { type: 'tool-result' as const, output: '@@ -1 +1 @@\n-before\n+after' }
   ]
 
-  it('counts the edit in the turn it was made, pointing at the subagent row', () => {
+  it('counts the edit in the turn it was made, pointing at the subagent row and its section', () => {
     const { conversation, sections } = sectionsOf([
       row('ask', say('edit it'), { role: 'user' }),
       roster('spawn', [['task-1', 'editor', 'completed']]),
@@ -219,9 +219,9 @@ describe("a subagent's edits in its turn's changed files", () => {
       'child-edit',
       'answer'
     ])
-    const diff = nativeChatTurnDiffs(rows.messages, rows.turnKeys).get('ask')
-    expect(diff?.files.map((file) => [file.path, file.target.messageId])).toEqual([
-      ['src/a.ts', 'child-edit']
+    const diff = nativeChatTurnDiffs(rows.messages, rows.turnKeys, sections.pathOf).get('ask')
+    expect(diff?.files.map((file) => file.target)).toEqual([
+      { messageId: 'child-edit', editKey: 'Diff:0', fileIndex: 0, subagentSections: ['task-1'] }
     ])
   })
 })

@@ -3,10 +3,11 @@ import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-summary'
 import type { NativeChatSubagentEntry } from '../../../../shared/native-chat-types'
-import { StatusDot, subagentStateLabel } from './NativeChatSubagentRun'
+import { StatusDot } from './NativeChatSubagentRun'
 
-/** Names the subagent whose rows follow, and opens or closes them. An agent no
- *  loaded roster names has no label or state to show, only that it is one. */
+/** Names the subagent whose rows follow, and opens or closes them. Its state in
+ *  words is on its roster entry; an agent no loaded roster names has no label or
+ *  state to show, only that it is one. */
 export function NativeChatSubagentSectionHead({
   agentId,
   entry,
@@ -35,9 +36,6 @@ export function NativeChatSubagentSectionHead({
       <code className="min-w-0 truncate font-mono text-[11px] text-foreground/80">
         {entry?.label ?? translate('components.native-chat.subagents.unnamed', 'Subagent')}
       </code>
-      {state === null ? null : (
-        <span className="shrink-0 font-mono text-[11px]">{subagentStateLabel(state, 1, 1)}</span>
-      )}
     </button>
   )
 }

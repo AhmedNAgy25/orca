@@ -142,7 +142,7 @@ export function NativeChatMessageList({
     sections: subagentSections,
     expandedSubagentIds,
     toggleSubagentSection,
-    openSubagentSectionsAround
+    openSubagentSections
   } = useNativeChatSubagentSections(messages, projection.subagentRows)
   const taskListPredecessors = useMemo(() => nativeChatTaskListPredecessors(messages), [messages])
   const taskListState = useMemo(() => nativeChatTaskListState(messages), [messages])
@@ -168,7 +168,7 @@ export function NativeChatMessageList({
       return new Map<string, NativeChatTurnDiff>()
     }
     const rows = nativeChatRowsInTranscriptOrder(messages, turnKeys, subagentSections)
-    return nativeChatTurnDiffs(rows.messages, rows.turnKeys)
+    return nativeChatTurnDiffs(rows.messages, rows.turnKeys, subagentSections.pathOf)
   }, [journalItems, messages, subagentSections, turnKeys])
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
@@ -286,14 +286,16 @@ export function NativeChatMessageList({
     (target: NativeChatDiffTarget) => {
       beginNavigation()
       // A subagent's edit is revealed inside its section.
-      openSubagentSectionsAround(target.messageId)
+      if (target.subagentSections) {
+        openSubagentSections(target.subagentSections)
+      }
       navigationSequence.current += 1
       setNavigationRequest({
         kind: 'diff',
         target: { ...target, requestId: navigationSequence.current }
       })
     },
-    [beginNavigation, openSubagentSectionsAround]
+    [beginNavigation, openSubagentSections]
   )
   const jumpToLatest = useCallback(() => {
     beginNavigation()
