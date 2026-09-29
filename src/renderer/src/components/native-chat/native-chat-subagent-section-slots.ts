@@ -114,7 +114,8 @@ export function nativeChatSubagentSectionSlots({
         estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
           hasReceipt: receipt !== undefined,
           hasStatus: false,
-          hasTurnDiff: false
+          hasTurnDiff: false,
+          inSubagentSection: true
         })
       })
     }

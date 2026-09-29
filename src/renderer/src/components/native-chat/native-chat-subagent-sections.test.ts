@@ -173,6 +173,20 @@ describe("a subagent's rows live in its own section", () => {
     expect(new Set(slots.map(nativeChatSlotKey)).size).toBe(slots.length)
   })
 
+  it("reserves a section's prose the controls it keeps inside the section", () => {
+    const same = [
+      row('ask', say('review the PR'), { role: 'user' }),
+      roster('spawn', [['task-1', 'explore the lane', 'completed']]),
+      row('child-said', say('one\ntwo'), by('task-1')),
+      row('answer', say('one\ntwo'))
+    ]
+    const heightOf = (id: string): number | undefined =>
+      slotsOf(same, { 'task-1': true }).find(
+        (slot) => slot.kind === 'message' && slot.message.id === id
+      )?.estimatedHeight
+    expect(heightOf('child-said')! - heightOf('answer')!).toBe(20)
+  })
+
   it("puts each open agent's rows under its own entry, and the entries after them below its rows", () => {
     const fanOut = [
       row('ask', say('review three lanes'), { role: 'user' }),

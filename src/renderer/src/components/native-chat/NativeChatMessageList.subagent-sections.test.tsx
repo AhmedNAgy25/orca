@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalItemBody,
@@ -130,6 +130,26 @@ describe("a subagent's rows in the transcript", () => {
     fireEvent.click(entry)
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
     expect(screen.getByRole('button', { name: /explore the lane/, expanded: false })).toBeVisible()
+  })
+
+  // happy-dom has no layout, so the geometry is pinned by the margin that decides it:
+  // outside a section a row's controls hang into the gap below it (`-mb-5`), and
+  // inside one that overhang would leave them below the section's border, touching
+  // the parent's next row.
+  it("keeps a section row's controls inside the row that carries the section's border", () => {
+    renderList()
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
+    const controlsOf = (text: string): HTMLElement => {
+      const row = screen.getByText(text).closest<HTMLElement>('.group')
+      expect(row).not.toBeNull()
+      return within(row!).getByRole('button', { name: 'Scroll this message to top' }).parentElement!
+    }
+
+    const sectionControls = controlsOf('The PR is CLEAN.')
+    expect(sectionControls.closest('.border-l-2')).not.toBeNull()
+    expect(sectionControls).not.toHaveClass('-mb-5')
+    expect(controlsOf('Delegated; nothing to fix.')).toHaveClass('-mb-5')
   })
 
   it("draws an open agent's rows between its entry and the next one", () => {

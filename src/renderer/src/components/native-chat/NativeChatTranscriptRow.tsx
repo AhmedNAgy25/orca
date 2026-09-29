@@ -109,6 +109,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           folded={slot.folded}
           subagentRoster={slot.subagentRoster}
           subagentDisclosure={context.subagentDisclosure}
+          inSubagentSection={slot.depth > 0}
           runtimeContext={context.runtimeContext}
         />
       )}
