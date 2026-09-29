@@ -144,18 +144,10 @@ export function screenModuleMocks(dependencies: ScreenDependencies) {
         parseMobileWebShellLoadState: parseMobileWebShellLoadState
       }
     },
+    // The wall's release offer: the native hook imports the update checker module.
+    '../app-update/use-blocked-shell-app-update': () => ({ useBlockedShellAppUpdate: () => null }),
     // The real bridge hook runs, so the props it owns are the ones the view is handed here; only the
     // client lookup is stubbed, because reaching it imports the Expo runtime this test does not have.
-    // The wall's update checker: the real one imports expo-constants, an Expo global this test lacks.
-    '../app-update/app-update-runtime': () => ({
-      appUpdateChecker: { checkNow: () => Promise.resolve('failed') },
-      useAppUpdateState: () => ({
-        lastCheckedAt: null,
-        available: null,
-        dismissedVersion: null,
-        checking: false
-      })
-    }),
     '../transport/client-context': () => ({
       useHostClient: () => ({ client: dependencies.client })
     }),

@@ -5,7 +5,7 @@ import { isNewerReleaseVersion } from './app-update-source'
 
 // Same cadence as the desktop updater (src/main/updater-events.ts).
 export const APP_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
-const APP_UPDATE_RETRY_INTERVAL_MS = 60 * 60 * 1000
+export const APP_UPDATE_RETRY_INTERVAL_MS = 60 * 60 * 1000
 const APP_UPDATE_CHECK_TIMEOUT_MS = 8000
 
 type TimerHandle = ReturnType<typeof setTimeout>

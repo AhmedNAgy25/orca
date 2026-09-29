@@ -118,15 +118,9 @@ vi.mock('../../modules/orca-mobile-web-shell/src', async () => {
     parseMobileWebShellLoadState: loadState.parseMobileWebShellLoadState
   }
 })
-// The wall's update checker: the real one imports expo-constants, an Expo global this test lacks.
-vi.mock('../app-update/app-update-runtime', () => ({
-  appUpdateChecker: { checkNow: () => Promise.resolve('failed') },
-  useAppUpdateState: () => ({
-    lastCheckedAt: null,
-    available: null,
-    dismissedVersion: null,
-    checking: false
-  })
+// The wall's release offer: the native hook imports the update checker module.
+vi.mock('../app-update/use-blocked-shell-app-update', () => ({
+  useBlockedShellAppUpdate: () => null
 }))
 vi.mock('../transport/client-context', () => ({ useHostClient: () => ({ client: null }) }))
 vi.mock('./use-page-host-snapshot', () => ({

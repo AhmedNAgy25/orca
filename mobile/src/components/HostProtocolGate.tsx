@@ -3,7 +3,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { useHostClient } from '../transport/client-context'
 import { useHostStatusGates, type HostStatusGates } from '../transport/host-status-gates'
 import { colors } from '../theme/mobile-theme'
-import { ProtocolBlockScreen } from './ProtocolBlockScreen'
+import { useBlockedShellAppUpdate } from '../app-update/use-blocked-shell-app-update'
+import { blockRemedy, ProtocolBlockScreen } from './ProtocolBlockScreen'
 
 type Props = {
   hostId: string | undefined
@@ -33,6 +34,9 @@ export function HostProtocolGate({ hostId, children }: Props) {
   const blocked = compatVerdict.kind === 'blocked'
   const pending = statusPending && resolvedHostIdRef.current !== hostKey
   const holdBack = pending && mountedHostIdRef.current !== hostKey
+  const mobileUpdate = useBlockedShellAppUpdate(
+    compatVerdict.kind === 'blocked' ? blockRemedy(compatVerdict) : null
+  )
 
   // Why: React can replay or discard a render, so the latches record committed
   // outcomes only — a discarded children render must not count as mounted.
@@ -62,7 +66,7 @@ export function HostProtocolGate({ hostId, children }: Props) {
     )
   }
   if (blocked) {
-    return <ProtocolBlockScreen verdict={compatVerdict} />
+    return <ProtocolBlockScreen verdict={compatVerdict} mobileUpdate={mobileUpdate} />
   }
   // Why: the host sidebar needs the same status fields; sharing the result avoids a second status.get per route.
   return (
