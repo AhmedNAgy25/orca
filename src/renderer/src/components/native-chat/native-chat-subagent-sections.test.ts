@@ -395,6 +395,19 @@ describe("a parent's spawn and wait calls are part of its subagents' delegation"
     expect(opened([...claudeTurn, row('read', call('Read'))])).toEqual([])
   })
 
+  it('reads a call the parent makes right after the roster by when it happened, not where it is drawn', () => {
+    // Both calls fold into the spawn call's row, which is drawn above the roster.
+    const spawned = claudeTurn.filter(({ id }) => id !== 'then' && id !== 'spawn-call-b')
+    const afterRoster = (rows: NativeChatMessage[]) => [...spawned.slice(0, 3), ...rows]
+    const withChildren = (rows: NativeChatMessage[]) => [...afterRoster(rows), ...spawned.slice(3)]
+    expect(outline(slotsOf(withChildren([row('read', call('Read'))]), {}, true))).toEqual([
+      'ask',
+      'spawn-call-a',
+      'spawn'
+    ])
+    expect(opened(withChildren([row('spawn-call-b', call('Agent'))]))).toEqual(['task-b'])
+  })
+
   // Codex: every spawn, wait or message names its agents by thread id.
   const codexTurn = [
     row('ask', say('review both lanes'), { role: 'user' }),

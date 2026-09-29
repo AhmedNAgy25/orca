@@ -11,6 +11,7 @@
 // every render, with no latch; the reader's own choice outranks it.
 
 import { compareAgentJournalPositions } from '../../../../shared/agent-session-journal-position'
+import type { AgentJournalPosition } from '../../../../shared/agent-session-journal-types'
 import { normalizeSubagentState } from '../../../../shared/native-chat-subagent-summary'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -53,8 +54,7 @@ export function nativeChatSubagentLiveSections(
     const belongsHere = (agentId: string): boolean =>
       !scopeOf.has(agentId) || scopeOf.get(agentId) === scope
     const atFrontier = (): readonly string[] => {
-      for (let index = scopeRows.length - 1; index >= 0; index -= 1) {
-        const row = scopeRows[index]!
+      for (const row of newestFirst(scopeRows)) {
         if (!isOutput(row) || (scope === null && handedDown.rowIds.has(row.id))) {
           continue
         }
@@ -92,6 +92,38 @@ export function nativeChatSubagentLiveSections(
   }
   visit(conversation, null)
   return live
+}
+
+/** Rows by their newest part, newest first. A tool run is drawn at the assistant row it
+ *  folds into, so that row can hold calls newer than the roster rows drawn below it. No
+ *  row above an assistant row reaches past it: a run folds only into the latest one. */
+function* newestFirst(rows: readonly NativeChatMessage[]): Generator<NativeChatMessage> {
+  let below: NativeChatMessage[] = []
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!
+    if (row.role !== 'assistant') {
+      below.push(row)
+      continue
+    }
+    const newest = row.foldedJournalPosition ?? row.journalPosition
+    let next = 0
+    while (next < below.length && (newest === undefined || isNewerThan(below[next]!, newest))) {
+      yield below[next]!
+      next += 1
+    }
+    yield row
+    yield* below.slice(next)
+    below = []
+  }
+  yield* below
+}
+
+/** A row the journal does not hold yet is newer than any it does. */
+function isNewerThan(row: NativeChatMessage, position: AgentJournalPosition): boolean {
+  return (
+    row.journalPosition === undefined ||
+    compareAgentJournalPositions(row.journalPosition, position) > 0
+  )
 }
 
 /** The session's roster rows and calls whose agents one subagent spawned, by that subagent. */
