@@ -7,7 +7,7 @@ import {
   parseMobileWebShellLoadState
 } from '../../modules/orca-mobile-web-shell/src'
 import { HostRouteNoticeBanner } from '../components/HostRouteNoticeBanner'
-import { blockRemedy, ProtocolBlockScreen } from '../components/ProtocolBlockScreen'
+import { ProtocolBlockScreen } from '../components/ProtocolBlockScreen'
 import { useBlockedShellAppUpdate } from '../app-update/use-blocked-shell-app-update'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import type { BridgeInitRoute } from './bridge/bridge-envelope'
@@ -331,9 +331,7 @@ export function MobileWebShellScreen({
     }
   }, [reportShellFailure, unreadable])
 
-  const mobileUpdate = useBlockedShellAppUpdate(
-    state.kind === 'wall' ? blockRemedy(state.verdict) : null
-  )
+  const mobileUpdate = useBlockedShellAppUpdate()
 
   if (state.kind === 'native-route') {
     return fallback

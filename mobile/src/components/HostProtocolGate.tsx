@@ -4,7 +4,7 @@ import { useHostClient } from '../transport/client-context'
 import { useHostStatusGates, type HostStatusGates } from '../transport/host-status-gates'
 import { colors } from '../theme/mobile-theme'
 import { useBlockedShellAppUpdate } from '../app-update/use-blocked-shell-app-update'
-import { blockRemedy, ProtocolBlockScreen } from './ProtocolBlockScreen'
+import { ProtocolBlockScreen } from './ProtocolBlockScreen'
 
 type Props = {
   hostId: string | undefined
@@ -34,9 +34,7 @@ export function HostProtocolGate({ hostId, children }: Props) {
   const blocked = compatVerdict.kind === 'blocked'
   const pending = statusPending && resolvedHostIdRef.current !== hostKey
   const holdBack = pending && mountedHostIdRef.current !== hostKey
-  const mobileUpdate = useBlockedShellAppUpdate(
-    compatVerdict.kind === 'blocked' ? blockRemedy(compatVerdict) : null
-  )
+  const mobileUpdate = useBlockedShellAppUpdate()
 
   // Why: React can replay or discard a render, so the latches record committed
   // outcomes only — a discarded children render must not count as mounted.

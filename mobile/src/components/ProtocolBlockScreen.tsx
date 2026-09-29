@@ -26,9 +26,9 @@ const DESKTOP_TOO_OLD_BODY =
 
 /** What clears the wall. `refresh-bundle` is the one that no store can: the cached workspace is
  *  older than this host's client floor, so a download fixes it and an app update does not. */
-export type BlockRemedy = 'update-mobile' | 'update-desktop' | 'refresh-bundle'
+type BlockRemedy = 'update-mobile' | 'update-desktop' | 'refresh-bundle'
 
-export function blockRemedy(verdict: BlockedVerdict): BlockRemedy {
+function blockRemedy(verdict: BlockedVerdict): BlockRemedy {
   switch (verdict.reason) {
     case 'mobile-too-old':
     case 'bundle-shell-too-old':

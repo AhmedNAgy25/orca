@@ -192,8 +192,6 @@ export function createAppUpdateChecker(deps: AppUpdateCheckerDeps) {
   return {
     start,
     checkNow,
-    // The wall asks for a check but the checker decides whether one is due.
-    checkIfDue: runIfDue,
     dismiss,
     getSnapshot: (): AppUpdateState => snapshot,
     subscribe(listener: () => void): () => void {
