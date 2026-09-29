@@ -1,10 +1,12 @@
 // Which subagent sections a running scope holds open by default.
 //
-// A scope's live frontier is the newest row its agent produced, user rows aside. A section
-// opens while that row is part of its agent's delegation: a call that spawns, waits on or
-// messages it, or the roster row that names it as the agent most recently added. A spawn
-// call naming no agent belongs to the roster announcing it. Anything newer supersedes the
-// delegation even while the agent still works; its roster keeps showing that live state.
+// A scope's live frontier is the newest row its agent produced, user rows aside, judged by
+// the newest call a folded tool run holds rather than where the run is drawn. A section opens
+// while that row is part of its agent's delegation: a call that spawns, waits on or messages
+// it (a call naming several delegates to the first), or the roster row that names it as the
+// agent most recently added. A spawn call naming no agent belongs to the roster announcing
+// it. Anything newer supersedes the delegation even while the agent still works; its roster
+// keeps showing that live state.
 // The session is the outer scope; a subagent still working is a scope of its own for the
 // sections it spawned, and a settled one closes its scope. A delegation naming only agents
 // one subagent spawned is that subagent's output, wherever the host journaled it. Derived
@@ -66,7 +68,7 @@ export function nativeChatSubagentLiveSections(
           return []
         }
         if (delegation.kind === 'call') {
-          return delegation.agentIds.filter((agentId) => inScope.has(agentId))
+          return inScope.has(delegation.agentId) ? [delegation.agentId] : []
         }
         const newest = delegation.agentIds.findLast(belongsHere)
         return newest !== undefined && inScope.has(newest) ? [newest] : []
@@ -141,10 +143,9 @@ function handDownNestedDelegations(
     if (delegation === null || delegation.kind === 'spawn') {
       continue
     }
+    const agentIds = delegation.kind === 'call' ? [delegation.agentId] : delegation.agentIds
     const spawners = new Set(
-      delegation.agentIds.flatMap((agentId) =>
-        scopeOf.has(agentId) ? [scopeOf.get(agentId) ?? null] : []
-      )
+      agentIds.flatMap((agentId) => (scopeOf.has(agentId) ? [scopeOf.get(agentId) ?? null] : []))
     )
     const [spawner] = spawners
     if (spawners.size === 1 && spawner !== undefined && spawner !== null) {

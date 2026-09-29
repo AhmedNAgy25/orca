@@ -2,15 +2,16 @@
 //
 // A roster row names the agents it announces, in the order they were added. A Codex collab
 // call (spawn, wait, resume, message, close) names the agents it acts on by thread id, which
-// is the agent id; one naming none (a spawn still starting, a wait on any agent) is ordinary
-// output. A Claude spawn call names no agent — only its call id, which is re-minted on resume
+// is the agent id, and delegates to the first; one naming none (a spawn still starting, a
+// wait on any agent) is ordinary output. A Claude spawn call names no agent — only its call id, which is re-minted on resume
 // and never a join key — so it belongs to the roster that announces its agent. A drawn row is
 // a spawn when its newest part is one.
 
 import { isSubagentGroupBlock, type NativeChatMessage } from '../../../../shared/native-chat-types'
 
 export type NativeChatSubagentDelegation =
-  | { kind: 'roster' | 'call'; agentIds: readonly string[] }
+  | { kind: 'roster'; agentIds: readonly string[] }
+  | { kind: 'call'; agentId: string }
   | { kind: 'spawn' }
 
 /** Claude's subagent spawn tool, under its current and its older name. */
@@ -43,8 +44,8 @@ function derive(message: NativeChatMessage): NativeChatSubagentDelegation | null
   const frame =
     message.blocks.length === 1 && only?.type === 'text' ? only.providerFrame : undefined
   if (frame?.provider === 'codex' && frame.kind === CODEX_COLLAB_CALL_FRAME) {
-    const receivers = frame.payload.truncated ? [] : receiverThreadIds(frame.payload.head)
-    return receivers.length > 0 ? { kind: 'call', agentIds: receivers } : null
+    const [agentId] = frame.payload.truncated ? [] : receiverThreadIds(frame.payload.head)
+    return agentId === undefined ? null : { kind: 'call', agentId }
   }
   // A tool run folds into the message before it, so its last call is the newest thing in it.
   const newest = message.blocks.findLast((block) => block.type !== 'tool-result')

@@ -421,14 +421,11 @@ describe("a parent's spawn and wait calls are part of its subagents' delegation"
     row('b-look', say('Reading lane b.'), by('task-b'))
   ]
 
-  it('opens the agent a spawn or a wait names, and each one a call names', () => {
+  it('opens the agent a spawn or a wait names, and only the first one a call names', () => {
     expect(opened(codexTurn)).toEqual(['task-b'])
     expect(opened([...codexTurn, collab('wait-a', 'wait', ['task-a'])])).toEqual(['task-a'])
     expect(opened([...codexTurn, collab('wait-b', 'wait', ['task-b'])])).toEqual(['task-b'])
-    expect(opened([...codexTurn, collab('wait', 'wait', ['task-a', 'task-b'])])).toEqual([
-      'task-a',
-      'task-b'
-    ])
+    expect(opened([...codexTurn, collab('wait', 'wait', ['task-b', 'task-a'])])).toEqual(['task-b'])
   })
 
   it('treats a call naming no agent as ordinary output', () => {

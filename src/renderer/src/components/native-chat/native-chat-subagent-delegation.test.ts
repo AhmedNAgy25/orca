@@ -42,11 +42,11 @@ describe('which rows delegate to subagents', () => {
     })
   })
 
-  it('names the agents a Codex collab call acts on, and none it cannot read', () => {
+  it('names the first agent a Codex collab call acts on, and none it cannot read', () => {
     const wait = JSON.stringify({ tool: 'wait', receiverThreadIds: ['thread-a', 'thread-b'] })
     expect(nativeChatSubagentDelegation(collabFrame(wait))).toEqual({
       kind: 'call',
-      agentIds: ['thread-a', 'thread-b']
+      agentId: 'thread-a'
     })
     expect(nativeChatSubagentDelegation(collabFrame('{"receiverThreadIds":[]}'))).toBeNull()
     expect(nativeChatSubagentDelegation(collabFrame(wait, true))).toBeNull()
