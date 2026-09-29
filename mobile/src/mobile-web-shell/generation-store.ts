@@ -87,7 +87,8 @@ export function createGenerationStore(options: {
   const stagingRoot = (hostKey: string): string =>
     joinUri(hostRoot(hostKey), STAGING_DIRECTORY_NAME)
 
-  /** `null` when unreadable or torn, unlike absent: a commit rewrites it whole, an open leaves it. */
+  /** `null` when unreadable or torn, unlike absent: a commit rewrites it whole; an open
+   *  leaves it. */
   async function readHostIndex(): Promise<Map<string, number> | null> {
     const text = await fs.readText(joinUri(fs.rootUri, HOST_INDEX_FILE_NAME)).catch(() => undefined)
     const parsed = text === undefined ? null : HostIndexSchema.safeParse(parseJson(text ?? '{}'))
