@@ -104,7 +104,11 @@ export class ClaudeSubagentRosterGroups {
   private admit(group: RosterGroup): void {
     this.groups.set(group.groupId, group)
     for (const id of group.entries.keys()) {
-      this.groupIdByEntry.set(id, group.groupId)
+      // A child an older build listed in two rows stays live in the one reached first; moving it
+      // would strand the copy already reopened at `working`.
+      if (!this.locate(id)) {
+        this.groupIdByEntry.set(id, group.groupId)
+      }
     }
     while (this.groups.size > MAX_SUBAGENT_GROUPS) {
       const oldest = this.groups.keys().next()

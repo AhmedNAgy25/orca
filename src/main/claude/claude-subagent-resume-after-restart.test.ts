@@ -12,6 +12,7 @@ import type { AgentSessionJournal } from '../native-chat/agent-session-journal/j
 import { createTrackedJournalOpener } from '../native-chat/agent-session-journal/journal-store-test-open'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
+import { claudeSubagentGroupBody, claudeSubagentGroupIdentity } from './claude-subagent-group-row'
 
 // Frame orders are real sessions', scrubbed. A resumed agent's frames still name its ORIGINAL
 // spawn call while the announcement names the message call that resumed it, and a new provider
@@ -429,6 +430,55 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     expect(stopped).toMatchObject({ id: 'agent-a', state: 'stopped' })
     expect(stopped?.settledAt).toBeUndefined()
     await second.exit()
+  })
+
+  it('keeps one live entry for a child an older build listed in two rows', async () => {
+    // An older build re-rostered a resumed child in the later turn's row, so two rows list it.
+    const journal = await openJournal()
+    const older = createDeferredStructuredAgentSessionEventSink()
+    older.bind({ journal, fence: 1, publish: () => {} })
+    const listed = (id: string, state: NativeChatSubagentEntry['state']) => ({
+      id,
+      label: `Child ${id}`,
+      state,
+      startedAt: 1,
+      settledAt: 2
+    })
+    for (const [groupId, agents] of [
+      [
+        'claude-session:turn-a',
+        [listed('agent-a', 'unverifiable'), listed('agent-b', 'unverifiable')]
+      ],
+      ['claude-session:turn-b', [listed('agent-a', 'completed')]]
+    ] as const) {
+      older.sink.appendItem(
+        claudeSubagentGroupIdentity(groupId),
+        claudeSubagentGroupBody(groupId, agents)
+      )
+    }
+    await expect(older.drained()).resolves.toEqual({ ok: true })
+    older.close()
+
+    const run = acquire(journal)
+    run.translator.handle(userTurn('turn-c'))
+    run.translator.handle(taskStarted('agent-a', 'toolu_message_a', 'Child agent-a'))
+    // A frame for a sibling only the other row lists brings that row in too.
+    run.translator.handle(taskCompleted('agent-b', 'toolu_spawn_b'))
+    run.translator.handle(taskCompleted('agent-a', 'toolu_message_a'))
+    await run.settle()
+
+    // The copy the resume reopened is the one its outcome lands on; nothing is left running.
+    const states = Object.fromEntries(
+      rowsListing(journal, 'agent-a').map((row) => [
+        row.groupId,
+        row.agents.find((agent) => agent.id === 'agent-a')?.state
+      ])
+    )
+    expect(states).toEqual({
+      'claude-session:turn-a': 'unverifiable',
+      'claude-session:turn-b': 'completed'
+    })
+    await run.exit()
   })
 
   it('still files a child no journaled row resolved under its own reference, never the parent', async () => {

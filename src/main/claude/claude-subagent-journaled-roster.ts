@@ -84,7 +84,8 @@ function readJournaledRoster(
     entriesByGroup: new Map(),
     groupByEntry: new Map()
   }
-  // A child listed by two group rows is the newer row's: that is where it last ran.
+  // A child two rows list (only an older build wrote that) is the later-created row's: a turn's
+  // row is created with its turn, so that is where it last ran.
   const listedAt = new Map<string, number>()
   journal.visitItemsWithLinkage((itemId, sequence, body, linkage) => {
     readAgentRow(reading, linkage)
