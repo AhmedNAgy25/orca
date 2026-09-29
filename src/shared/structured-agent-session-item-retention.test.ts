@@ -361,15 +361,15 @@ describe('structured agent session item retention', () => {
     expect(streamed.hasOlder).toBe(false)
   })
 
-  it("trims through the oldest own row the limit passes, with the subagent's rows before it", () => {
+  it("trims to the oldest own row it keeps, taking the subagent's rows before it along", () => {
     const rows = range(1, CAP + 1).flatMap((sequence) =>
       sequence === 1 ? [childItem(sequence)] : [item(sequence)]
     )
     const streamed = streamBatches(hydrate([item(0)]), rows)
 
-    // Own rows 0 and 2..CAP+1 are CAP+1 of them: row 0 goes, and child row 1 after it stays.
-    expect(streamed.items[0]?.itemId).toBe('item-1')
-    expect(streamed.items).toHaveLength(CAP + 1)
+    // Own rows 0 and 2..CAP+1 are CAP+1 of them: row 0 goes, and child row 1 after it with it.
+    expect(streamed.items[0]?.itemId).toBe('item-2')
+    expect(streamed.items).toHaveLength(CAP)
     expect(streamed.hasOlder).toBe(true)
   })
 

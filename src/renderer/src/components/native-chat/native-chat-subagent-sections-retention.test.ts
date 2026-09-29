@@ -117,4 +117,24 @@ describe('subagent sections over the live retained window', () => {
     expect(sections.openAt.get(null)).toBeUndefined()
     expect(conversation.map((message) => message.id)).toEqual(['prompt', 'roster'])
   })
+
+  it('trims a subagent away with the roster naming it, not into an unnamed section', () => {
+    const opened = snapshot([
+      item('prompt', 1, said('user', 'review the PR')),
+      item('roster', 2, rosterBody),
+      ...Array.from({ length: 5 }, (_, index) =>
+        item(`child-${index}`, index + 3, said('assistant', `step ${index}`), child)
+      )
+    ])
+    // The parent's own rows pass the retained limit, trimming the prompt and the roster.
+    const parent = Array.from({ length: 1_024 }, (_, index) =>
+      item(`own-${index}`, index + 8, said('assistant', `note ${index}`))
+    )
+
+    const { conversation, sections } = sectionsOf(stream(opened, parent))
+
+    expect(conversation[0]?.id).toBe('own-0')
+    expect(sections.rows.has('task-1')).toBe(false)
+    expect(sections.openAt.get(null)).toBeUndefined()
+  })
 })
