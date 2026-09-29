@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+import { appUpdateChecker, useAppUpdateState } from '../app-update/app-update-runtime'
 import { openExternalLink } from '../platform/external-link'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
@@ -68,6 +70,13 @@ function blockBody(verdict: BlockedVerdict, remedy: BlockRemedy, storeName: stri
 export function ProtocolBlockScreen({ verdict }: Props) {
   const router = useRouteHandoff()
   const remedy = blockRemedy(verdict)
+  // The wall ignores dismissal: this release is the way past it, not a nudge the user declined.
+  const { available } = useAppUpdateState()
+  useEffect(() => {
+    if (remedy === 'update-mobile') {
+      void appUpdateChecker.checkNow()
+    }
+  }, [remedy])
   // Why: Android APKs ship through GitHub Releases until a Play Store listing exists.
   const mobileUpdateTarget =
     Platform.OS === 'ios'
@@ -78,7 +87,9 @@ export function ProtocolBlockScreen({ verdict }: Props) {
     remedy === 'refresh-bundle'
       ? null
       : remedy === 'update-mobile'
-        ? { label: mobileUpdateTarget.label, url: mobileUpdateTarget.url }
+        ? available
+          ? { label: `Get Orca ${available.version}`, url: available.url }
+          : { label: mobileUpdateTarget.label, url: mobileUpdateTarget.url }
         : { label: 'Open GitHub Releases', url: RELEASES_URL }
 
   const title = blockTitle(remedy)

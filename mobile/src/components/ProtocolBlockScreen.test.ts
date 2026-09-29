@@ -10,6 +10,23 @@ const nativeTestState = vi.hoisted(() => {
   return { openUrl: vi.fn(), platform }
 })
 
+const appUpdateTestState = vi.hoisted(() => {
+  const state: { available: { version: string; url: string } | null } = { available: null }
+  return { state, checkNow: vi.fn(() => Promise.resolve('failed')) }
+})
+
+// The wall reads the checker the way MobileHomeAppUpdateCard does; the runtime is the seam.
+vi.mock('../app-update/app-update-runtime', () => ({
+  appUpdateChecker: { checkNow: appUpdateTestState.checkNow },
+  useAppUpdateState: () => ({
+    lastCheckedAt: null,
+    available: appUpdateTestState.state.available,
+    // Dismissed is the offered version: the wall must offer it anyway.
+    dismissedVersion: appUpdateTestState.state.available?.version ?? null,
+    checking: false
+  })
+}))
+
 vi.mock('react-native', () => ({
   Linking: { openURL: nativeTestState.openUrl },
   Platform: nativeTestState.platform,
@@ -56,6 +73,8 @@ describe('ProtocolBlockScreen', () => {
   beforeEach(() => {
     nativeTestState.openUrl.mockClear()
     nativeTestState.platform.OS = 'ios'
+    appUpdateTestState.state.available = null
+    appUpdateTestState.checkNow.mockClear()
   })
 
   afterEach(() => {
@@ -180,5 +199,66 @@ describe('ProtocolBlockScreen', () => {
     expect(output).toContain('Already updated? Go back to Hosts and refresh the connection.')
     // The presence precondition for the absence asserted on the refresh wall above.
     expect(pressableCount()).toBe(2)
+  })
+
+  describe('with the newest release known', () => {
+    const release = {
+      version: '0.0.52',
+      url: 'https://github.com/stablyai/orca/releases/tag/mobile-v0.0.52'
+    }
+
+    it.each(['ios', 'android'] as const)('opens that exact release on %s', (os) => {
+      nativeTestState.platform.OS = os
+      appUpdateTestState.state.available = release
+      const output = render({ kind: 'blocked', reason: 'bundle-shell-too-old', schemaVersion: 2 })
+      expect(output).toContain('Get Orca 0.0.52')
+      expect(output).not.toContain('Open App Store')
+      expect(output).not.toContain('Open GitHub Releases')
+      expect(primaryActionUrl()).toBe(release.url)
+    })
+
+    it('leaves the desktop wall on the desktop releases', () => {
+      appUpdateTestState.state.available = release
+      const output = render({ kind: 'blocked', reason: 'bundle-unavailable' })
+      expect(output).not.toContain('Get Orca')
+      expect(primaryActionUrl()).toBe(RELEASES_URL)
+    })
+  })
+
+  it('checks for the release once when the mobile update wall mounts', () => {
+    render({
+      kind: 'blocked',
+      reason: 'mobile-too-old',
+      desktopVersion: 5,
+      requiredMobileVersion: 9
+    })
+    act(() =>
+      renderer?.update(
+        createElement(ProtocolBlockScreen, {
+          verdict: {
+            kind: 'blocked',
+            reason: 'mobile-too-old',
+            desktopVersion: 5,
+            requiredMobileVersion: 9
+          }
+        })
+      )
+    )
+    expect(appUpdateTestState.checkNow).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    { kind: 'blocked', reason: 'bundle-unavailable' },
+    { kind: 'blocked', reason: 'desktop-too-old', desktopVersion: 0, requiredDesktopVersion: 2 },
+    {
+      kind: 'blocked',
+      reason: 'bundle-incompatible',
+      side: 'mobile',
+      bundleRuntimeProtocolVersion: 3,
+      requiredBundleRuntimeProtocolVersion: 4
+    }
+  ] satisfies BlockedVerdict[])('never checks on the $reason wall', (verdict) => {
+    render(verdict)
+    expect(appUpdateTestState.checkNow).not.toHaveBeenCalled()
   })
 })
