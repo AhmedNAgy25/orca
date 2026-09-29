@@ -5,7 +5,7 @@ import {
   replayTranscript,
   type TranscriptReplayFrame
 } from './agent-transcript-replay-test-harness'
-import { isKnownReadyPromptBody, isKnownReadyPromptPreview } from './terminal-wait-detection'
+import { isKnownReadyPromptPreview, isQuietReadyScreenBody } from './terminal-wait-detection'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -60,14 +60,14 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       for await (const frame of replayTranscript(readRuntimeFixture(name), 120, 40)) {
         if (screenShowsLoadingHeader(frame.screenLines)) {
           sawLoadingHeader = true
-          expect(isKnownReadyPromptBody('', 'codex', () => frame.screenLines)).toBe(false)
+          expect(isQuietReadyScreenBody('', 'codex', () => frame.screenLines)).toBe(false)
         }
         last = frame
       }
       // Presence precondition: a loading frame was actually exercised.
       expect(sawLoadingHeader).toBe(true)
       expect(last).not.toBeNull()
-      expect(isKnownReadyPromptBody(last!.waitText, 'codex', () => last!.screenLines)).toBe(true)
+      expect(isQuietReadyScreenBody(last!.waitText, 'codex', () => last!.screenLines)).toBe(true)
     }
   )
 
@@ -82,7 +82,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
       for await (const frame of replayTranscript(readRuntimeFixture(name), cols, rows)) {
         if (isKnownReadyPromptPreview(frame.waitText)) {
-          expect(isKnownReadyPromptBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
+          expect(isQuietReadyScreenBody(frame.waitText, 'codex', () => frame.screenLines)).toBe(
             true
           )
         }
@@ -92,10 +92,10 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
 
   it('keeps the text rules when there is no live screen', async () => {
     const { waitText } = await finalFrame(PLAIN, 120, 40)
-    expect(isKnownReadyPromptBody(waitText, 'codex', () => null)).toBe(
+    expect(isQuietReadyScreenBody(waitText, 'codex', () => null)).toBe(
       isKnownReadyPromptPreview(waitText)
     )
-    expect(isKnownReadyPromptBody(waitText, 'codex', () => null)).toBe(true)
+    expect(isQuietReadyScreenBody(waitText, 'codex', () => null)).toBe(true)
   })
 
   it('does not read a mid-turn composer as ready', () => {
@@ -105,7 +105,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       '› Ask Codex to do anything',
       '  GPT-6-Sol high · ~/repo/app'
     ]
-    expect(isKnownReadyPromptBody(screenLines.join('\n'), 'codex', () => screenLines)).toBe(false)
+    expect(isQuietReadyScreenBody(screenLines.join('\n'), 'codex', () => screenLines)).toBe(false)
   })
 
   it('does not settle when a blocking dialog is painted below the header', () => {
@@ -116,7 +116,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       'Do you trust the contents of this directory?',
       'Press enter to continue'
     ]
-    expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(false)
+    expect(isQuietReadyScreenBody('', 'codex', () => screenLines)).toBe(false)
   })
 
   it('reads only the header box, not chat below it that mentions Codex', () => {
@@ -128,25 +128,25 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       '╰──────────────────────────────────────────────────────────╯',
       '› Why does OpenAI Codex print model: loading at startup?'
     ]
-    expect(isKnownReadyPromptBody('', 'codex', () => screenLines)).toBe(true)
+    expect(isQuietReadyScreenBody('', 'codex', () => screenLines)).toBe(true)
   })
 
-  it('leaves a non-codex pane on the text rules even when its screen shows the Codex header', () => {
+  it('never reads a non-codex screen, even one showing the Codex header', () => {
     const screenLines = [
       '│ >_ OpenAI Codex (v0.157.1)                               │',
       '│ model:       GPT-6-Sol high   /model to change           │',
       '│ directory:   ~/repo/app                                  │'
     ]
     const readScreenLines = vi.fn(() => screenLines)
-    expect(isKnownReadyPromptBody('', 'claude', readScreenLines)).toBe(false)
+    expect(isQuietReadyScreenBody('', 'claude', readScreenLines)).toBe(false)
     expect(readScreenLines).not.toHaveBeenCalled()
-    expect(isKnownReadyPromptBody('', 'codex', readScreenLines)).toBe(true)
+    expect(isQuietReadyScreenBody('', 'codex', readScreenLines)).toBe(true)
   })
 
   describe('at the 80x24 default grid the header garbles and today’s answer stands', () => {
     it.each(ALL_FIXTURES)('%s', async (name) => {
       const { screenLines, waitText } = await finalFrame(name, 80, 24)
-      expect(isKnownReadyPromptBody(waitText, 'codex', () => screenLines)).toBe(
+      expect(isQuietReadyScreenBody(waitText, 'codex', () => screenLines)).toBe(
         isKnownReadyPromptPreview(waitText)
       )
     })
@@ -167,9 +167,9 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
       '%s: a tui-idle wait settles from the live screen',
       async (name) => {
         const { runtime, handle } = await codexPane(name, { cols: 120, rows: 40 })
-        // Why 5s: the poll re-reads the grid every 2s once the queued emulator write lands.
+        // Why 8s: quiescence (3s) plus the 2s poll re-reading the grid.
         await expect(
-          runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 5_000 })
+          runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 8_000 })
         ).resolves.toMatchObject({ condition: 'tui-idle', satisfied: true })
       },
       15_000
@@ -178,7 +178,7 @@ describe('Codex 0.157 header readiness from captured bytes', () => {
     it('keeps timing out on the garbled 80x24 default grid, as before', async () => {
       const { runtime, handle } = await codexPane(EFFORT_OVERRIDE)
       await expect(
-        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 2_500 })
+        runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs: 6_000 })
       ).rejects.toThrow(/timeout/)
     }, 15_000)
   })
