@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { AgentJournalCursor } from '../../../src/shared/agent-session-journal-types'
+import { isRootAgentJournalItem } from '../../../src/shared/agent-session-journal-producer'
 import type {
+  AgentSessionHistoryPage,
   AgentSessionHistoryResult,
   AgentSessionSubscribeEvent
 } from '../../../src/shared/agent-session-wire'
@@ -18,6 +21,8 @@ import { callAgentSession } from './mobile-structured-agent-session-rpc'
 const MAX_RETAINED_SESSION_STATES = 32
 /** Bounded so a busy stream cannot turn one Load-earlier tap into an endless read chain. */
 const OLDER_PAGE_ANCHOR_ATTEMPTS = 3
+/** Bounds the pages one Load-earlier reads past that hold only subagent rows. */
+const OLDER_PAGES_PER_LOAD = 8
 
 /**
  * Opens the transcript stream once the hold settles, either way: a refused hold is an older host
@@ -182,17 +187,43 @@ export function useMobileStructuredAgentState(args: {
         if (!cursor || !isCurrentRead()) {
           return
         }
-        const result = await callAgentSession<AgentSessionHistoryResult>(
-          client,
-          'agentSession.history',
-          { sessionId, direction: 'before', cursor, limit: AGENT_SESSION_HISTORY_MAX_LIMIT }
-        )
-        if (!result.ok || !isCurrentRead()) {
+        // Mobile draws only the session's own rows, so a page of a subagent's rows alone
+        // would land as nothing; read on until a page adds a row the reader can see.
+        const pages: { requestedCursor: AgentJournalCursor; page: AgentSessionHistoryPage }[] = []
+        let requestedCursor = cursor
+        while (pages.length < OLDER_PAGES_PER_LOAD) {
+          const result = await callAgentSession<AgentSessionHistoryResult>(
+            client,
+            'agentSession.history',
+            {
+              sessionId,
+              direction: 'before',
+              cursor: requestedCursor,
+              limit: AGENT_SESSION_HISTORY_MAX_LIMIT
+            }
+          )
+          if (!result.ok || !isCurrentRead()) {
+            break
+          }
+          pages.push({ requestedCursor, page: result.page })
+          if (
+            !result.page.hasOlder ||
+            result.page.items.length === 0 ||
+            result.page.items.some(isRootAgentJournalItem)
+          ) {
+            break
+          }
+          requestedCursor = result.page.window.nextCursor
+        }
+        if (pages.length === 0 || !isCurrentRead()) {
           return
         }
-        // The reducer drops a page whose anchor slid, so only an intact anchor lands.
+        // The reducer drops a page whose anchor slid, so only an intact anchor lands;
+        // each later page abuts the one before it.
         if (oldestStructuredAgentSessionCursor(stateRef.current)?.sequence === cursor.sequence) {
-          apply({ type: 'older-page', requestedCursor: cursor, page: result.page })
+          for (const { requestedCursor: pageCursor, page } of pages) {
+            apply({ type: 'older-page', requestedCursor: pageCursor, page })
+          }
           return
         }
       }
