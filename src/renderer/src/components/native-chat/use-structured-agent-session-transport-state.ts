@@ -1,8 +1,6 @@
 import { useMemo } from 'react'
-import {
-  activeStructuredAgentSessionTurnId,
-  hasUnansweredStructuredAgentSessionDispatch
-} from '../../../../shared/structured-agent-session-projection'
+import { activeStructuredAgentSessionTurnId } from '../../../../shared/structured-agent-session-projection'
+import { isStructuredAgentSessionMainAgentWorking } from '../../../../shared/structured-agent-session-main-agent-working'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
 import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { selectStructuredAgentTurnActivity } from '../../../../shared/native-chat-turn-activity'
@@ -22,8 +20,8 @@ export function useStructuredAgentSessionTransportState(
   const subagentRoster = (enabled ? state.subagentRoster : undefined) ?? NO_SUBAGENT_ROSTER
   const fence = enabled ? state.fence : null
   const turnId = activeStructuredAgentSessionTurnId(journalItems)
-  const isWorking =
-    turnId !== null || hasUnansweredStructuredAgentSessionDispatch(submissions, fence)
+  // The rule the host projects every session list's Working from, so this chat cannot disagree.
+  const isWorking = isStructuredAgentSessionMainAgentWorking(turnId, submissions, fence)
   const turnActivity = useMemo(
     () => selectStructuredAgentTurnActivity(journalItems, turnId, enabled ? state.activity : null),
     [enabled, journalItems, state.activity, turnId]
