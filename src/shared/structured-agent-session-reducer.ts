@@ -63,8 +63,9 @@ const MAX_RETAINED_SUBMISSIONS = 256
 // long live sessions trim; anything trimmed is still reachable by paging older.
 // Counted in the session's own rows, so a subagent's burst cannot trim the roster naming it.
 const MAX_RETAINED_OWN_ITEMS = 1024
-// Above the largest own-row window local journals reach (7,374 rows, about 8 MB).
-const MAX_RETAINED_ITEMS = 8 * MAX_RETAINED_OWN_ITEMS
+// Bounds the rows every live delta re-derives the transcript over. Above the most (3,005) that
+// local journals put between a roster and its subagent's last row within the own-row limit.
+const MAX_RETAINED_ITEMS = 4 * MAX_RETAINED_OWN_ITEMS
 
 export const EMPTY_STRUCTURED_AGENT_SESSION: StructuredAgentSessionState = {
   epoch: null,

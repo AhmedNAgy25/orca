@@ -9,7 +9,7 @@ import {
 } from './structured-agent-session-reducer'
 
 const CAP = 1024
-const BACKSTOP = 8 * CAP
+const BACKSTOP = 4 * CAP
 
 function item(sequence: number): AgentJournalRenderItem {
   return {
