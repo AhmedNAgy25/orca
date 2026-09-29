@@ -52,6 +52,7 @@ describe('appendUpdateFailure', () => {
     expect(kept[0]?.at).toBe(10)
   })
 
+  // Pinned here because deriving it would make the failure log import the store that imports it.
   it('keeps a full per-host history for every cached host', () => {
     expect(MAX_UPDATE_FAILURES).toBe(MAX_UPDATE_FAILURES_PER_HOST * MAX_CACHED_HOSTS)
   })
