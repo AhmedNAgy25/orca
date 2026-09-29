@@ -13,6 +13,7 @@ import type {
 import type { AgentSessionRefusalReference } from './agent-session-wire-refusals'
 import { backgroundTaskStatesEqual } from './agent-session-background-task-state-equality'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
+import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { compareAgentJournalItems } from './agent-session-journal-position'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 
@@ -29,8 +30,11 @@ export type StructuredAgentSessionState = {
   fence: number | null
   items: AgentJournalRenderItem[]
   submissions: AgentJournalSubmission[]
-  /** Head-trim floor for `items`; paging back raises it so a live batch cannot undo the page. */
-  retainedItemLimit: number
+  /** Head-trim floor, in the session's own rows; paging back raises it so a live batch cannot
+   *  undo the page. */
+  retainedOwnItemLimit: number
+  /** Head-trim ceiling on every agent's rows, the memory backstop; paging back raises it too. */
+  retainedItemCap: number
   hasOlder: boolean
   status: 'idle' | 'loading' | 'ready' | 'error'
   /** The failed read's own text, for logs; a surface words `readRefusal` instead. */
@@ -57,7 +61,10 @@ export type StructuredAgentSessionAction =
 const MAX_RETAINED_SUBMISSIONS = 256
 // Well above the renderer's initial read window (300) plus a page, so only genuinely
 // long live sessions trim; anything trimmed is still reachable by paging older.
-const MAX_RETAINED_ITEMS = 1024
+// Counted in the session's own rows, so a subagent's burst cannot trim the roster naming it.
+const MAX_RETAINED_OWN_ITEMS = 1024
+// Above the largest own-row window local journals reach (7,374 rows, about 8 MB).
+const MAX_RETAINED_ITEMS = 8 * MAX_RETAINED_OWN_ITEMS
 
 export const EMPTY_STRUCTURED_AGENT_SESSION: StructuredAgentSessionState = {
   epoch: null,
@@ -65,7 +72,8 @@ export const EMPTY_STRUCTURED_AGENT_SESSION: StructuredAgentSessionState = {
   fence: null,
   items: [],
   submissions: [],
-  retainedItemLimit: MAX_RETAINED_ITEMS,
+  retainedOwnItemLimit: MAX_RETAINED_OWN_ITEMS,
+  retainedItemCap: MAX_RETAINED_ITEMS,
   hasOlder: false,
   status: 'idle'
 }
@@ -92,7 +100,8 @@ function replacePage(
     fence,
     items: [...page.items].sort(compareAgentJournalItems),
     submissions: page.submissions,
-    retainedItemLimit: Math.max(MAX_RETAINED_ITEMS, page.items.length),
+    retainedOwnItemLimit: Math.max(MAX_RETAINED_OWN_ITEMS, ownItemCount(page.items)),
+    retainedItemCap: Math.max(MAX_RETAINED_ITEMS, page.items.length),
     hasOlder: page.hasOlder,
     status: 'ready',
     activity: activity ?? null,
@@ -142,11 +151,31 @@ function liveItemsWithinWindow(
   return incoming.filter((item) => item.sequence >= head.sequence)
 }
 
+function ownItemCount(items: readonly AgentJournalRenderItem[]): number {
+  return items.reduce((count, item) => (isRootAgentJournalItem(item) ? count + 1 : count), 0)
+}
+
+/** Everything after the newest own row past `ownLimit`, so a trim only ever cuts through one of
+ *  the session's own rows: a paged-in run of a subagent's rows at the head stays until an own row
+ *  pushes it out. With no subagent rows this is the newest `ownLimit` rows. */
 function trimRetainedItems(
   items: AgentJournalRenderItem[],
-  limit: number
+  ownLimit: number,
+  cap: number
 ): AgentJournalRenderItem[] {
-  return items.length <= limit ? items : items.slice(items.length - limit)
+  let start = Math.max(0, items.length - cap)
+  let own = 0
+  for (let index = items.length - 1; index >= start; index -= 1) {
+    if (!isRootAgentJournalItem(items[index])) {
+      continue
+    }
+    own += 1
+    if (own > ownLimit) {
+      start = index + 1
+      break
+    }
+  }
+  return start === 0 ? items : items.slice(start)
 }
 
 function mergeSubmissions(
@@ -208,7 +237,8 @@ export function reduceStructuredAgentSession(
     return {
       ...state,
       items,
-      retainedItemLimit: Math.max(state.retainedItemLimit, items.length),
+      retainedOwnItemLimit: Math.max(state.retainedOwnItemLimit, ownItemCount(items)),
+      retainedItemCap: Math.max(state.retainedItemCap, items.length),
       submissions: mergeSubmissions(state.submissions, action.page.submissions, items),
       hasOlder: action.page.hasOlder,
       ...hostClockField(action.page.hostNow, receivedAt, state.hostClock)
@@ -255,7 +285,7 @@ export function reduceStructuredAgentSession(
   const merged = journalUnchanged
     ? state.items
     : mergeItems(state.items, liveItems, event.batch.removedItemIds)
-  const items = trimRetainedItems(merged, state.retainedItemLimit)
+  const items = trimRetainedItems(merged, state.retainedOwnItemLimit, state.retainedItemCap)
   const outsideWindow = [
     ...(liveItems.length < event.batch.items.length
       ? event.batch.items.filter((item) => !liveItems.includes(item))
