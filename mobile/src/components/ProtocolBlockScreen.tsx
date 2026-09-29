@@ -1,4 +1,5 @@
 import { openExternalLink } from '../platform/external-link'
+import type { KnownAppUpdate } from '../storage/app-update-preferences'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
@@ -17,7 +18,7 @@ export type BlockedVerdict =
 type Props = {
   verdict: BlockedVerdict
   /** The newest release the shell's checker knows; the page never has one (no checker there). */
-  mobileUpdate?: { version: string; url: string } | null
+  mobileUpdate?: KnownAppUpdate | null
 }
 
 const DESKTOP_TOO_OLD_BODY =

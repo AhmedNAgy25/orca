@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import type { BlockRemedy } from '../components/ProtocolBlockScreen'
 import type { KnownAppUpdate } from '../storage/app-update-preferences'
-import { APP_UPDATE_RETRY_INTERVAL_MS } from './app-update-checker'
 import { appUpdateChecker, useAppUpdateState } from './app-update-runtime'
 
 /**
@@ -10,20 +9,11 @@ import { appUpdateChecker, useAppUpdateState } from './app-update-runtime'
  */
 export function useBlockedShellAppUpdate(remedy: BlockRemedy | null): KnownAppUpdate | null {
   const { available } = useAppUpdateState()
-  // Keyed on the remedy alone, so a published result re-renders without re-checking.
+  // Keyed on the remedy alone, so a published result re-renders without asking again.
   useEffect(() => {
-    if (remedy === 'update-mobile' && checkIsWorthAnotherCall(Date.now())) {
-      void appUpdateChecker.checkNow()
+    if (remedy === 'update-mobile') {
+      appUpdateChecker.checkIfDue()
     }
   }, [remedy])
   return available
-}
-
-// A flapping host remounts the wall; each check is an unauthenticated GitHub call (60/hour/IP).
-function checkIsWorthAnotherCall(now: number): boolean {
-  const { available, lastCheckedAt } = appUpdateChecker.getSnapshot()
-  return (
-    available === null &&
-    (lastCheckedAt === null || now - lastCheckedAt >= APP_UPDATE_RETRY_INTERVAL_MS)
-  )
 }
