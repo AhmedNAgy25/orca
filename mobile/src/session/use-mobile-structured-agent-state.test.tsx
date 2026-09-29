@@ -63,30 +63,27 @@ describe('useMobileStructuredAgentState older history', () => {
   async function mountWithOlderPages(older: Record<number, AgentSessionHistoryPage>) {
     let onFrame: ((value: unknown) => void) | null = null
     const historyCursors: number[] = []
-    const client: Pick<RpcClient, 'sendRequest' | 'subscribe'> = {
-      sendRequest: async (method, params) => {
-        if (method !== 'agentSession.history') {
-          return { ok: true, result: {}, _meta: { runtimeId: 'runtime-1' } }
-        }
-        const { cursor } = params as { cursor: AgentJournalCursor }
-        historyCursors.push(cursor.sequence)
-        return {
-          ok: true,
-          result: { ok: true, page: older[cursor.sequence] },
-          _meta: { runtimeId: 'runtime-1' }
-        }
-      },
-      subscribe: (_method, _params, frame) => {
+    const sendRequest = vi.fn(async (method: string, params?: { cursor?: AgentJournalCursor }) => {
+      if (method !== 'agentSession.history' || !params?.cursor) {
+        return { ok: true, result: {} }
+      }
+      historyCursors.push(params.cursor.sequence)
+      return { ok: true, result: { ok: true, page: older[params.cursor.sequence] } }
+    })
+    const subscribe = vi.fn(
+      (_method: string, _params: unknown, frame: (value: unknown) => void) => {
         onFrame = frame
         return () => {}
       }
-    }
+    )
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: an RPC client stub with the two members the hook calls.
+    const client = { sendRequest, subscribe } as unknown as RpcClient
     const hook: { current: ReturnType<typeof useMobileStructuredAgentState> | null } = {
       current: null
     }
     function Harness(): null {
       hook.current = useMobileStructuredAgentState({
-        client: client as RpcClient,
+        client,
         sessionId: 'session-1',
         sessionKey: 'session-1',
         enabled: true,
