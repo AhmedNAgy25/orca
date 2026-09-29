@@ -40,8 +40,10 @@ export function foldStructuredAgentSubagentRoster(
   /** A page's `subagentRoster`, absent from older hosts. */
   pageEntries: readonly AgentSessionSubagentRosterEntry[] = []
 ): StructuredAgentSubagentRoster {
-  let next: Map<string, StructuredAgentSubagentRosterEntry> | null = null
-  const writable = (): Map<string, StructuredAgentSubagentRosterEntry> => (next ??= new Map(roster))
+  // A holder, not a `let`: writes happen inside closures, which control-flow narrowing can't see.
+  const draft: { next: Map<string, StructuredAgentSubagentRosterEntry> | null } = { next: null }
+  const writable = (): Map<string, StructuredAgentSubagentRosterEntry> =>
+    (draft.next ??= new Map(roster))
   if (removedItemIds.length > 0) {
     const removed = new Set(removedItemIds)
     for (const [agentId, named] of roster) {
@@ -51,7 +53,7 @@ export function foldStructuredAgentSubagentRoster(
     }
   }
   const take = (candidate: StructuredAgentSubagentRosterEntry): void => {
-    const held = (next ?? roster).get(candidate.entry.id)
+    const held = (draft.next ?? roster).get(candidate.entry.id)
     const order = held
       ? compareAgentJournalPositions(candidate.rosterPosition, held.rosterPosition)
       : -1
@@ -89,6 +91,7 @@ export function foldStructuredAgentSubagentRoster(
       }
     }
   }
+  const next = draft.next
   if (next === null) {
     return roster
   }
