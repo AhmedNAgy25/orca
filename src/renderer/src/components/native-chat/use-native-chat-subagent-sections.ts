@@ -63,11 +63,10 @@ export function useNativeChatSubagentSections(
     sectionsRef.current = sections
   }, [sections])
   const openSubagentSections = useCallback((agentIds: readonly string[]) => {
-    const { anchoredAt, rosters } = sectionsRef.current
-    const rosterRowIds = agentIds.flatMap((agentId) => {
-      const rowId = rosters.get(agentId)?.rowId
-      return rowId !== undefined && anchoredAt.get(rowId)?.includes(agentId) ? [rowId] : []
-    })
+    const opening = new Set(agentIds)
+    const rosterRowIds = Array.from(sectionsRef.current.anchoredAt).flatMap(([rowId, anchored]) =>
+      anchored.some((agentId) => opening.has(agentId)) ? [rowId] : []
+    )
     setChoices((current) =>
       rosterRowIds.reduce(
         (choices, rowId) => choose(choices, 'rosters', rowId, true),
