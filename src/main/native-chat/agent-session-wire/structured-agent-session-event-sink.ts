@@ -51,6 +51,12 @@ export type StructuredAgentSessionRevisionJournal = Pick<
   'epoch' | 'visitItems' | 'itemBody'
 >
 
+/** Who produced each row already journaled, read by a producer that has to agree with it. */
+export type StructuredAgentSessionLinkageJournal = Pick<
+  AgentSessionJournal,
+  'epoch' | 'visitItemLinkage'
+>
+
 /** The row a revision rewrites and its whole new body, read from the journal at execution. */
 export type StructuredAgentSessionRevisionResolver = (
   journal: StructuredAgentSessionRevisionJournal
@@ -121,6 +127,8 @@ export type StructuredAgentSessionEventSink = {
   ): StructuredAgentSessionSinkAdmission
   /** Current durable epoch, when this deferred sink is bound to its journal. */
   journalEpoch?(): string | null
+  /** The bound journal's producer linkage; null until bound. */
+  journalLinkage?(): StructuredAgentSessionLinkageJournal | null
   appendLifecycleBatch?(
     settlementId: string,
     mutations: readonly JournalLifecycleMutationInput[],
@@ -261,6 +269,7 @@ export function createDeferredStructuredAgentSessionEventSink(
         ),
       ...resolvedAppend,
       journalEpoch: queue.journalEpoch,
+      journalLinkage: queue.journalLinkage,
       appendLifecycleBatch: (settlementId, mutations, options = {}) => {
         const admission = appendLifecycleBatch(settlementId, mutations, options)
         if (!admission.accepted) {

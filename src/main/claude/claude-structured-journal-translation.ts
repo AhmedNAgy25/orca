@@ -18,6 +18,7 @@ import { ClaudeBackgroundTaskRows } from './claude-background-task-rows'
 import { ClaudeToolOriginRegistry } from './claude-tool-origin-registry'
 import { ClaudeProvisionalRowCorrections } from './claude-provisional-row-corrections'
 import { ClaudeSubagentRoster } from './claude-subagent-roster'
+import { ClaudeJournaledSubagentIds } from './claude-subagent-id-aliases'
 import { createClaudeStreamedBlockRegistry } from './claude-streamed-block-identity'
 import { createClaudeStreamedTextCheckpoints } from './claude-streamed-text-checkpoints'
 import {
@@ -78,11 +79,14 @@ export function createClaudeJournalTranslator(
     deps.fallbackIdPrefix ?? 'acquisition'
   )
   const toolOrigins = new ClaudeToolOriginRegistry()
+  const journaledIds = new ClaudeJournaledSubagentIds(() => deps.sink.journalLinkage?.() ?? null)
   const subagents = new ClaudeSubagentRoster({
     sink: deps.sink,
     currentGroupKey: () => turn.groupKey,
     isForwardedParentTool: (toolUseId) => toolOrigins.has(toolUseId),
     childOwnerRefOf: (toolUseId) => toolOrigins.childOwnerRef(toolUseId),
+    // A child resumed after a restart still names the spawn call an earlier run saw announced.
+    journaledCanonicalId: journaledIds.canonical,
     // A settled group can receive no further announcement, so a correction
     // still owed is never coming; the rows keep the stamp they already have.
     onIdentitiesFinal: () => corrections.abandon()

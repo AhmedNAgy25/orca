@@ -1,6 +1,7 @@
 import type {
   StructuredAgentSessionAppendOptions,
   StructuredAgentSessionEventTarget,
+  StructuredAgentSessionLinkageJournal,
   StructuredAgentSessionReadingControl,
   StructuredAgentSessionSinkAdmission,
   StructuredAgentSessionSinkBarrier,
@@ -61,6 +62,8 @@ export class StructuredAgentSessionSinkQueue {
   })
 
   journalEpoch = (): string | null => this.target?.journal.epoch ?? null
+
+  journalLinkage = (): StructuredAgentSessionLinkageJournal | null => this.target?.journal ?? null
 
   bindReadingControl(control: StructuredAgentSessionReadingControl): () => void {
     this.readingControl = control

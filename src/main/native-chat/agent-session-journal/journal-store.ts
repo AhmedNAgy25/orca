@@ -7,6 +7,7 @@ import type {
   AgentJournalCursor,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
+  AgentJournalProducerLinkage,
   AgentJournalSnapshot,
   AgentJournalSubmission,
   AgentJournalThreadGoal,
@@ -213,6 +214,14 @@ export class AgentSessionJournal {
   /** One reduced item's body by its journal key, for a writer revising a row it can name. */
   itemBody = (itemId: string): AgentJournalItemBody | null =>
     this.state.items.get(itemId)?.body ?? null
+
+  /** Each reduced item's producer linkage, for a producer re-deriving what an earlier run of this
+   *  session resolved. */
+  visitItemLinkage = (visit: (linkage: AgentJournalProducerLinkage) => void): void => {
+    for (const item of this.state.items.values()) {
+      visit(item)
+    }
+  }
 
   /** The turn this journal has published as running — the same read a client's snapshot gives,
    *  without materialising one. */

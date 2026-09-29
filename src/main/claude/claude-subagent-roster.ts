@@ -54,6 +54,8 @@ export type ClaudeSubagentRosterDeps = {
   /** The reference naming the child that journaled a tool call, when a child
    *  did. It is how a grandchild's row reaches the agent that spawned it. */
   childOwnerRefOf?: (toolUseId: string) => string | null
+  /** The task id an earlier run of this session resolved a spawn call to. */
+  journaledCanonicalId?: (toolUseId: string) => string | null
   /** A settled group can receive no further announcement, so an identity still
    *  provisional will stay that way. Fires on EVERY settle path, so a caller
    *  holding rows against a pending identity cannot miss one. */
@@ -66,7 +68,7 @@ export class ClaudeSubagentRoster {
   /** Canonical id → the group holding its entry, so a late update for a child
    *  from an earlier turn revises that turn's row instead of the live one. */
   private readonly groupIdByEntry = new Map<string, string>()
-  private readonly ids = new ClaudeSubagentIds()
+  private readonly ids: ClaudeSubagentIds
   /** Who produced a row, for every write site journaling this session. */
   readonly linkage: ClaudeSubagentLinkageSource
   /** Set by ANY `task_started`, including one the subagent filter rejects. Once
@@ -77,6 +79,7 @@ export class ClaudeSubagentRoster {
 
   constructor(private readonly deps: ClaudeSubagentRosterDeps) {
     this.now = deps.now ?? (() => Date.now())
+    this.ids = new ClaudeSubagentIds(deps.journaledCanonicalId)
     this.linkage = new ClaudeSubagentLinkage({
       ids: this.ids,
       trackedFor: (canonicalId) => this.locate(canonicalId)?.tracked ?? null,
