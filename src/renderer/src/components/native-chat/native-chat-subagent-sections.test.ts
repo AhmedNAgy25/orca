@@ -155,6 +155,25 @@ describe("a subagent's rows live in its own section", () => {
     ])
   })
 
+  it('places each section head in the turn it sits in, for the outline rail', () => {
+    const rows = [
+      row('ask-1', say('first'), { role: 'user' }),
+      row('stray', say('Unlisted.'), by('toolu_9')),
+      row('reply-1', say('done')),
+      row('ask-2', say('review the PR'), { role: 'user' }),
+      roster('spawn', [['task-1', 'explore the lane', 'completed']]),
+      row('child-look', say('Looking.'), by('task-1')),
+      row('answer', say('Done.'))
+    ]
+    const heads = slotsOf(rows, { 'task-1': true }).flatMap((slot) =>
+      slot.kind === 'subagent' ? [[slot.agentId, slot.turnKey]] : []
+    )
+    expect(heads).toEqual([
+      ['toolu_9', 'ask-1'],
+      ['task-1', 'ask-2']
+    ])
+  })
+
   it('opens an agent no loaded roster names where its first row happened', () => {
     const unlisted = [
       row('ask', say('go'), { role: 'user' }),

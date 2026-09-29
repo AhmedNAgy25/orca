@@ -43,6 +43,8 @@ export type NativeChatTranscriptSlot = NativeChatMessageSlot | NativeChatSubagen
 export type NativeChatSubagentSectionSlot = {
   kind: 'subagent'
   agentId: string
+  /** The conversation turn this head sits in, so the outline rail can place it. */
+  turnKey: string | undefined
   /** The roster's entry for the agent; absent when no loaded roster names it. */
   entry: NativeChatSubagentEntry | undefined
   expanded: boolean
@@ -218,7 +220,7 @@ export function buildNativeChatTranscriptSlots(
         })
       })
     }
-    sectionSlots.openAnchoredAt(message.id, 0)
+    sectionSlots.openAnchoredAt(message.id, 0, turnKey)
   }
   sectionSlots.openBefore(pending, undefined, 0)
   return slots
@@ -246,10 +248,11 @@ function subagentSectionSlots({
     return entry !== undefined && normalizeSubagentState(entry.state) === 'working'
   }
   const isOpen = (agentId: string): boolean => sectionChoices.get(agentId) ?? isLive(agentId)
-  const pushHead = (agentId: string, depth: number): void => {
+  const pushHead = (agentId: string, depth: number, turnKey: string | undefined): void => {
     slots.push({
       kind: 'subagent',
       agentId,
+      turnKey,
       entry: sections.entries.get(agentId),
       expanded: isOpen(agentId),
       depth,
@@ -297,12 +300,16 @@ function subagentSectionSlots({
   function openBefore(pending: string[], message: NativeChatMessage | undefined, depth: number) {
     while (pending.length > 0) {
       const agentId = pending[0]!
-      const first = sections.rows.get(agentId)?.[0]?.message
-      if (message !== undefined && first !== undefined && compareMessages(first, message) >= 0) {
+      const first = sections.rows.get(agentId)?.[0]
+      if (
+        message !== undefined &&
+        first !== undefined &&
+        compareMessages(first.message, message) >= 0
+      ) {
         return
       }
       pending.shift()
-      pushHead(agentId, depth)
+      pushHead(agentId, depth, first?.turnKey)
       if (isOpen(agentId)) {
         pushRows(agentId, depth + 1)
       }
@@ -311,10 +318,10 @@ function subagentSectionSlots({
   return {
     openBefore,
     /** The open sections of the subagents a roster row names, in roster order. */
-    openAnchoredAt(messageId: string, depth: number): void {
+    openAnchoredAt(messageId: string, depth: number, turnKey: string | undefined): void {
       for (const agentId of sections.anchoredAt.get(messageId) ?? []) {
         if (isOpen(agentId)) {
-          pushHead(agentId, depth)
+          pushHead(agentId, depth, turnKey)
           pushRows(agentId, depth + 1)
         }
       }
