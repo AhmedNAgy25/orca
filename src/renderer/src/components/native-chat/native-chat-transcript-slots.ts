@@ -259,7 +259,9 @@ function subagentSectionSlots({
       estimatedHeight: NATIVE_CHAT_SUBAGENT_SECTION_HEAD_PX
     })
   }
-  const pushRows = (agentId: string, depth: number): void => {
+  /** `turnKey`: the turn the section is shown in. Its rows carry that one, not the
+   *  turn each was written in, so the outline rail lights where the reader is. */
+  const pushRows = (agentId: string, depth: number, turnKey: string | undefined): void => {
     const rows = sections.rows.get(agentId) ?? []
     // The agent's own frontier: its trailing run is live while the agent works.
     const working = isLive(agentId)
@@ -267,8 +269,8 @@ function subagentSectionSlots({
       speaksOrActs(row.message, rendersProse(row.message), receipts)
     )
     const pending = [...(sections.openAt.get(agentId) ?? [])]
-    for (const [index, { message, turnKey }] of rows.entries()) {
-      openBefore(pending, message, depth)
+    for (const [index, { message }] of rows.entries()) {
+      openBefore(pending, message, depth, { turnKey })
       const receipt = receipts.get(message.id)
       if (receipt === undefined && !nativeChatRowRendersContent(message.blocks)) {
         continue
@@ -293,11 +295,17 @@ function subagentSectionSlots({
         })
       })
     }
-    openBefore(pending, undefined, depth)
+    openBefore(pending, undefined, depth, { turnKey })
   }
   /** Heads, ahead of `message`, each pending section whose first row came before
-   *  it, with its rows when open; `undefined` flushes the rest. */
-  function openBefore(pending: string[], message: NativeChatMessage | undefined, depth: number) {
+   *  it, with its rows when open; `undefined` flushes the rest. Inside a section
+   *  each sits in that section's turn; in the conversation, in its first row's. */
+  function openBefore(
+    pending: string[],
+    message: NativeChatMessage | undefined,
+    depth: number,
+    section?: { turnKey: string | undefined }
+  ) {
     while (pending.length > 0) {
       const agentId = pending[0]!
       const first = sections.rows.get(agentId)?.[0]
@@ -309,9 +317,10 @@ function subagentSectionSlots({
         return
       }
       pending.shift()
-      pushHead(agentId, depth, first?.turnKey)
+      const turnKey = section ? section.turnKey : first?.turnKey
+      pushHead(agentId, depth, turnKey)
       if (isOpen(agentId)) {
-        pushRows(agentId, depth + 1)
+        pushRows(agentId, depth + 1, turnKey)
       }
     }
   }
@@ -322,7 +331,7 @@ function subagentSectionSlots({
       for (const agentId of sections.anchoredAt.get(messageId) ?? []) {
         if (isOpen(agentId)) {
           pushHead(agentId, depth, turnKey)
-          pushRows(agentId, depth + 1)
+          pushRows(agentId, depth + 1, turnKey)
         }
       }
     },

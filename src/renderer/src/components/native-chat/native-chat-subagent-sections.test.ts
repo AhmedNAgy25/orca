@@ -174,6 +174,35 @@ describe("a subagent's rows live in its own section", () => {
     ])
   })
 
+  it("places a section's rows in the turn the section is shown in, not the turn each was written in", () => {
+    const rows = [
+      row('ask-1', say('review the PR'), { role: 'user' }),
+      roster('spawn', [['task-1', 'explore the lane', 'working']]),
+      row('child-look', say('Looking.'), by('task-1')),
+      row('reply-1', say('Started a reviewer.')),
+      row('ask-2', say('and the tests?'), { role: 'user' }),
+      row('child-later', say('Still looking.'), by('task-1')),
+      row('grandchild-read', say('Reading one file.'), by('task-2', 'task-1')),
+      row('reply-2', say('Running them.'))
+    ]
+    const turns = slotsOf(rows, { 'task-2': true }).map((slot) => [
+      slot.kind === 'message' ? slot.message.id : `[${slot.agentId}]`,
+      slot.turnKey
+    ])
+    expect(turns).toEqual([
+      ['ask-1', 'ask-1'],
+      ['spawn', 'ask-1'],
+      ['[task-1]', 'ask-1'],
+      ['child-look', 'ask-1'],
+      ['child-later', 'ask-1'],
+      ['[task-2]', 'ask-1'],
+      ['grandchild-read', 'ask-1'],
+      ['reply-1', 'ask-1'],
+      ['ask-2', 'ask-2'],
+      ['reply-2', 'ask-2']
+    ])
+  })
+
   it('opens an agent no loaded roster names where its first row happened', () => {
     const unlisted = [
       row('ask', say('go'), { role: 'user' }),
