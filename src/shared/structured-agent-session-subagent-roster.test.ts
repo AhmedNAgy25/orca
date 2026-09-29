@@ -71,6 +71,30 @@ describe('the client roster of subagents', () => {
     expect([...foldStructuredAgentSubagentRoster(named, [], ['r-1']).keys()]).toEqual(['b'])
   })
 
+  it('drops an agent a newer revision of its roster row stops naming, and only a newer one', () => {
+    const named = fold([
+      roster('r-1', 2, [
+        ['a', 'review', 'working'],
+        ['b', 'tests', 'working']
+      ])
+    ])
+    const stale = foldStructuredAgentSubagentRoster(named, [
+      roster('r-1', 2, [['b', 'tests', 'working']], 1)
+    ])
+    expect([...stale.keys()]).toEqual(['a', 'b'])
+    const revised = foldStructuredAgentSubagentRoster(named, [
+      roster('r-1', 2, [['b', 'tests', 'completed']], 2)
+    ])
+    expect([...revised.keys()]).toEqual(['b'])
+    // Another roster naming the agent takes it over, as the window's rows would name it.
+    expect(
+      foldStructuredAgentSubagentRoster(named, [
+        roster('r-2', 5, [['a', 'resumed', 'working']]),
+        roster('r-1', 2, [['b', 'tests', 'completed']], 2)
+      ]).get('a')
+    ).toMatchObject({ rosterItemId: 'r-2' })
+  })
+
   it('holds a bounded number of agents, the newest-named kept', () => {
     const many = Array.from({ length: 600 }, (_, index) =>
       roster(`r-${index}`, index + 1, [[`agent-${index}`, 'x', 'completed']])

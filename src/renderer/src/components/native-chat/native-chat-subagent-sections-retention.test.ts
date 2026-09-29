@@ -193,6 +193,38 @@ describe('subagent sections over the live retained window', () => {
     expect(sectionsOf(after).sections.entries.get('task-1')?.state).toBe('completed')
   })
 
+  it('stops naming a subagent once a revision of its roster row drops it, as a fresh read would', () => {
+    const rows = [
+      item('prompt', 1, said('user', 'review the PR')),
+      item('roster', 2, rosterBody),
+      item('child-0', 3, said('assistant', 'step 0'), child)
+    ]
+    // The host drops an entry it learns was never a subagent, rewriting the roster row.
+    const dropped: AgentJournalRenderItem = {
+      ...item('roster', 2, {
+        kind: 'message',
+        role: 'system',
+        blocks: [
+          {
+            type: 'subagent-group',
+            groupId: 'group-1',
+            agents: [{ id: 'task-2', label: 'tests', state: 'working' }]
+          }
+        ]
+      }),
+      revision: 2
+    }
+
+    const live = sectionsOf(stream(snapshot(rows), [dropped], 1, 3))
+    const fresh = sectionsOf(snapshot([rows[0]!, dropped, rows[2]!]))
+
+    expect(live.sections.entries.get('task-1')).toBeUndefined()
+    expect(live.sections.entries).toEqual(fresh.sections.entries)
+    expect(nativeChatSubagentLiveSections(live.conversation, live.sections, true)).toEqual(
+      new Set()
+    )
+  })
+
   it('forgets every name on an epoch reset', () => {
     const named = stream(opening(), longBurst.slice(0, 3))
     expect(named.subagentRoster?.size).toBe(1)

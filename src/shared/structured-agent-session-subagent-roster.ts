@@ -5,7 +5,8 @@
 // loaded — and from the entries a page names beside its items for roster rows older than
 // it, so a subagent's section keeps its name and state whatever the window holds.
 // Rebuilt on every page that replaces the window, so nothing outlives an epoch or a
-// reconnect; a removed roster row takes its entries with it.
+// reconnect; a removed roster row takes its entries with it, and a newer revision of one
+// replaces it, as it does the window's copy, so an agent it stops naming loses its entry.
 
 import type { AgentJournalPosition, AgentJournalRenderItem } from './agent-session-journal-types'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
@@ -48,6 +49,21 @@ export function foldStructuredAgentSubagentRoster(
     const removed = new Set(removedItemIds)
     for (const [agentId, named] of roster) {
       if (removed.has(named.rosterItemId)) {
+        writable().delete(agentId)
+      }
+    }
+  }
+  for (const item of items) {
+    const named = rosterAgentIds(item)
+    if (named === null) {
+      continue
+    }
+    for (const [agentId, held] of draft.next ?? roster) {
+      if (
+        held.rosterItemId === item.itemId &&
+        item.revision > held.rosterRevision &&
+        !named.has(agentId)
+      ) {
         writable().delete(agentId)
       }
     }
@@ -102,6 +118,17 @@ export function foldStructuredAgentSubagentRoster(
     return new Map(newest.slice(0, MAX_ROSTER_AGENTS))
   }
   return next
+}
+
+/** The agents a roster row names, or null when the row is not one of the session's rosters. */
+function rosterAgentIds(item: AgentJournalRenderItem): ReadonlySet<string> | null {
+  if (!isRootAgentJournalItem(item) || item.body.kind !== 'message') {
+    return null
+  }
+  const groups = item.body.blocks.filter(isSubagentGroupBlock)
+  return groups.length === 0
+    ? null
+    : new Set(groups.flatMap((group) => group.agents.map((agent) => agent.id)))
 }
 
 /** Folds a history page: its rows, its removals, and the entries it names beside them. */
