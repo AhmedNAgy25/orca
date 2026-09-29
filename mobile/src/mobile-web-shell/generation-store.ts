@@ -23,7 +23,7 @@ const GENERATIONS_DIRECTORY_NAME = 'generations'
 const STAGING_DIRECTORY_NAME = 'tmp'
 const HOST_INDEX_FILE_NAME = 'hosts.json'
 
-/** Six hosts, least recently opened or activated evicted; each is ~8 MB on disk. */
+/** Six hosts, least recently opened or activated evicted. */
 export const MAX_CACHED_HOSTS = 6
 
 export type ActiveGeneration = {
@@ -87,12 +87,16 @@ export function createGenerationStore(options: {
   const stagingRoot = (hostKey: string): string =>
     joinUri(hostRoot(hostKey), STAGING_DIRECTORY_NAME)
 
-  async function readHostIndex(): Promise<Map<string, number>> {
-    // Unreadable is treated as absent here, unlike a manifest: an index nobody can read costs
-    // eviction order, and the next activation rewrites it whole.
-    const text = await fs.readText(joinUri(fs.rootUri, HOST_INDEX_FILE_NAME)).catch(() => null)
-    const parsed = text === null ? null : HostIndexSchema.safeParse(parseJson(text))
-    return new Map(Object.entries(parsed?.success === true ? parsed.data : {}))
+  /** `null` when unreadable or torn, unlike absent: a commit rewrites it whole, an open leaves it. */
+  async function readHostIndex(): Promise<Map<string, number> | null> {
+    const text = await fs.readText(joinUri(fs.rootUri, HOST_INDEX_FILE_NAME)).catch(() => undefined)
+    const parsed = text === undefined ? null : HostIndexSchema.safeParse(parseJson(text ?? '{}'))
+    return parsed?.success === true ? new Map(Object.entries(parsed.data)) : null
+  }
+
+  // Order, not wall time: a backward clock jump must not stamp the host just used as the oldest.
+  function stampRecency(index: Map<string, number>, hostKey: string): Map<string, number> {
+    return index.set(hostKey, Math.max(now(), ...Array.from(index.values(), (at) => at + 1)))
   }
 
   async function writeHostIndex(index: ReadonlyMap<string, number>): Promise<void> {
@@ -245,9 +249,7 @@ export function createGenerationStore(options: {
       // Still an activation, so it still counts as use: without this a host that redownloads the
       // bundle it already has stays the least recently activated and is evicted first. No eviction
       // pass, because the host count did not change.
-      const index = await readHostIndex()
-      index.set(staged.hostKey, now())
-      await writeHostIndex(index)
+      await writeHostIndex(stampRecency((await readHostIndex()) ?? new Map(), staged.hostKey))
       await fs.delete(staged.directory)
       return active
     }
@@ -271,8 +273,7 @@ export function createGenerationStore(options: {
       await fs.delete(target)
       throw new Error(`generation ${staged.buildId} did not carry its manifest through the rename`)
     }
-    const index = await readHostIndex()
-    index.set(staged.hostKey, now())
+    const index = stampRecency((await readHostIndex()) ?? new Map(), staged.hostKey)
     // Enforced here rather than left to a caller: the host ceiling is this module's invariant.
     await enforceHostLimit(index, staged.hostKey)
     return active
@@ -280,9 +281,11 @@ export function createGenerationStore(options: {
 
   async function openActive(hostKey: string): Promise<ActiveGeneration | null> {
     const active = await readActive(hostKey)
-    // An open is use, so a daily host downloaded long ago is not evicted first. Count unchanged.
-    if (active !== null) {
-      await writeHostIndex((await readHostIndex()).set(hostKey, now()))
+    // An open is use, so a daily host downloaded long ago is not evicted first. No eviction pass:
+    // the host count did not change.
+    const index = active === null ? null : await readHostIndex()
+    if (index !== null) {
+      await writeHostIndex(stampRecency(index, hostKey))
     }
     return active
   }
@@ -314,7 +317,7 @@ export function createGenerationStore(options: {
   async function deleteHost(hostKey: string): Promise<void> {
     await dropHostTree(hostKey)
     const index = await readHostIndex()
-    if (index.delete(hostKey)) {
+    if (index?.delete(hostKey) === true) {
       await writeHostIndex(index)
     }
   }

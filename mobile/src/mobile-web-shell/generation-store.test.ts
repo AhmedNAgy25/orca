@@ -308,6 +308,41 @@ describe('generation store', () => {
     expect(fs.text('hosts.json')).toBe(JSON.stringify({ [HOST]: 1 }))
   })
 
+  it('keeps an opened host the most recent across a backward clock jump', async () => {
+    const fs = createFakeFileSystem()
+    const times = [1000, 2000, 1]
+    let tick = 0
+    const store = createGenerationStore({ fileSystem: fs, now: () => times[tick++] ?? 1 })
+    const [opened, other] = hostKeys(2)
+    await activate(store, opened)
+    await activate(store, other)
+
+    expect((await store.readActiveGeneration(opened))?.buildId).toBe(BUILD)
+
+    const index: Record<string, number> = JSON.parse(fs.text('hosts.json') ?? '{}')
+    expect(index[opened]).toBeGreaterThan(index[other] ?? Infinity)
+  })
+
+  it('leaves an unreadable or torn index alone when opening a generation', async () => {
+    for (const breakIndex of [
+      (fs: FakeFileSystem) => fs.failReadsAt('hosts.json'),
+      (fs: FakeFileSystem) =>
+        fs.seed('hosts.json', { kind: 'file', bytes: new TextEncoder().encode('{torn') })
+    ]) {
+      const fs = createFakeFileSystem()
+      let clock = 0
+      const store = createGenerationStore({ fileSystem: fs, now: () => (clock += 1) })
+      await activate(store, HOST)
+      await activate(store, deriveHostCacheKey('other'))
+      breakIndex(fs)
+      const before = fs.text('hosts.json')
+
+      expect((await store.readActiveGeneration(HOST))?.buildId).toBe(BUILD)
+
+      expect(fs.text('hosts.json')).toBe(before)
+    }
+  })
+
   it('never counts or evicts a host that is only mid-download', async () => {
     const fs = createFakeFileSystem()
     let clock = 0
