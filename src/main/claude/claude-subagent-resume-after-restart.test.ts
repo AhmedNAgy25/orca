@@ -184,6 +184,43 @@ const backgroundTaskIds = (journal: AgentSessionJournal): string[] =>
 const rosterIds = (journal: AgentSessionJournal): Set<string> =>
   new Set(groupRows(journal).flatMap((row) => row.agents.map((agent) => agent.id)))
 
+/** An older build re-rostered a resumed child in the later turn's row, so two rows list it. */
+async function journalAnOlderBuildListedTwice(): Promise<AgentSessionJournal> {
+  const journal = await openJournal()
+  const older = createDeferredStructuredAgentSessionEventSink()
+  older.bind({ journal, fence: 1, publish: () => {} })
+  const listed = (id: string, state: NativeChatSubagentEntry['state']) => ({
+    id,
+    label: `Child ${id}`,
+    state,
+    startedAt: 1,
+    settledAt: 2
+  })
+  for (const [groupId, agents] of [
+    [
+      'claude-session:turn-a',
+      [listed('agent-a', 'unverifiable'), listed('agent-b', 'unverifiable')]
+    ],
+    ['claude-session:turn-b', [listed('agent-a', 'completed')]]
+  ] as const) {
+    older.sink.appendItem(
+      claudeSubagentGroupIdentity(groupId),
+      claudeSubagentGroupBody(groupId, agents)
+    )
+  }
+  await expect(older.drained()).resolves.toEqual({ ok: true })
+  older.close()
+  return journal
+}
+
+const agentAStateByRow = (journal: AgentSessionJournal): Record<string, string | undefined> =>
+  Object.fromEntries(
+    rowsListing(journal, 'agent-a').map((row) => [
+      row.groupId,
+      row.agents.find((agent) => agent.id === 'agent-a')?.state
+    ])
+  )
+
 describe('a Claude subagent resumed after its provider restarted', () => {
   it('keeps the canonical id its first run was given, so one child stays one child', async () => {
     const journal = await openJournal()
@@ -433,32 +470,7 @@ describe('a Claude subagent resumed after its provider restarted', () => {
   })
 
   it('keeps one live entry for a child an older build listed in two rows', async () => {
-    // An older build re-rostered a resumed child in the later turn's row, so two rows list it.
-    const journal = await openJournal()
-    const older = createDeferredStructuredAgentSessionEventSink()
-    older.bind({ journal, fence: 1, publish: () => {} })
-    const listed = (id: string, state: NativeChatSubagentEntry['state']) => ({
-      id,
-      label: `Child ${id}`,
-      state,
-      startedAt: 1,
-      settledAt: 2
-    })
-    for (const [groupId, agents] of [
-      [
-        'claude-session:turn-a',
-        [listed('agent-a', 'unverifiable'), listed('agent-b', 'unverifiable')]
-      ],
-      ['claude-session:turn-b', [listed('agent-a', 'completed')]]
-    ] as const) {
-      older.sink.appendItem(
-        claudeSubagentGroupIdentity(groupId),
-        claudeSubagentGroupBody(groupId, agents)
-      )
-    }
-    await expect(older.drained()).resolves.toEqual({ ok: true })
-    older.close()
-
+    const journal = await journalAnOlderBuildListedTwice()
     const run = acquire(journal)
     run.translator.handle(userTurn('turn-c'))
     run.translator.handle(taskStarted('agent-a', 'toolu_message_a', 'Child agent-a'))
@@ -468,15 +480,24 @@ describe('a Claude subagent resumed after its provider restarted', () => {
     await run.settle()
 
     // The copy the resume reopened is the one its outcome lands on; nothing is left running.
-    const states = Object.fromEntries(
-      rowsListing(journal, 'agent-a').map((row) => [
-        row.groupId,
-        row.agents.find((agent) => agent.id === 'agent-a')?.state
-      ])
-    )
-    expect(states).toEqual({
+    expect(agentAStateByRow(journal)).toEqual({
       'claude-session:turn-a': 'unverifiable',
       'claude-session:turn-b': 'completed'
+    })
+    await run.exit()
+  })
+
+  it('resumes a twice-listed child in its later row even when a sibling reaches the older row first', async () => {
+    const journal = await journalAnOlderBuildListedTwice()
+    const run = acquire(journal)
+    run.translator.handle(userTurn('turn-c'))
+    run.translator.handle(taskCompleted('agent-b', 'toolu_spawn_b'))
+    run.translator.handle(taskStarted('agent-a', 'toolu_message_a', 'Child agent-a'))
+    await run.settle()
+
+    expect(agentAStateByRow(journal)).toEqual({
+      'claude-session:turn-a': 'unverifiable',
+      'claude-session:turn-b': 'working'
     })
     await run.exit()
   })

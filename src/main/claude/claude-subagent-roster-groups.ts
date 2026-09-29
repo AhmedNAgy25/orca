@@ -98,18 +98,18 @@ export class ClaudeSubagentRosterGroups {
     }
     const group = inheritedClaudeSubagentGroup(groupId, entries, journaled.attempt)
     this.admit(group)
+    for (const id of group.entries.keys()) {
+      // A child an older build listed in two rows lives only in the one the reading chose, whichever
+      // row this run's frames reach first; the other copy is history.
+      if (journaled.groupOf(id) === groupId) {
+        this.groupIdByEntry.set(id, groupId)
+      }
+    }
     return group
   }
 
   private admit(group: RosterGroup): void {
     this.groups.set(group.groupId, group)
-    for (const id of group.entries.keys()) {
-      // A child an older build listed in two rows stays live in the one reached first; moving it
-      // would strand the copy already reopened at `working`.
-      if (!this.locate(id)) {
-        this.groupIdByEntry.set(id, group.groupId)
-      }
-    }
     while (this.groups.size > MAX_SUBAGENT_GROUPS) {
       const oldest = this.groups.keys().next()
       if (oldest.done || oldest.value === group.groupId) {
@@ -120,7 +120,9 @@ export class ClaudeSubagentRosterGroups {
         this.deps.onEvicted(evicted)
       }
       for (const id of evicted?.entries.keys() ?? []) {
-        this.groupIdByEntry.delete(id)
+        if (this.groupIdByEntry.get(id) === oldest.value) {
+          this.groupIdByEntry.delete(id)
+        }
       }
       this.groups.delete(oldest.value)
     }
