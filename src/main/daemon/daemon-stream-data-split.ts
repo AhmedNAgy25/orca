@@ -82,7 +82,8 @@ function splitOversizedStreamDataForNdjson(
   let start = 0
   while (start < data.length) {
     let low = start + 1
-    let high = data.length
+    // Why: a chunk with > maxLineBytes chars always exceeds maxLineBytes in UTF-8 JSON.
+    let high = Math.min(data.length, start + maxLineBytes)
     let best = start
 
     while (low <= high) {
