@@ -70,8 +70,8 @@ export type StructuredAgentSessionAction =
 const MAX_RETAINED_SUBMISSIONS = 256
 // Well above the renderer's initial read window (300) plus a page, so only genuinely
 // long live sessions trim; anything trimmed is still reachable by paging older.
-// Counted in the session's own rows, the rows a reader sees: a subagent's rows sit in a
-// one-row section on desktop and are not drawn on mobile, so they cannot crowd the conversation out.
+// Counted in the session's own rows, the rows a reader sees: a subagent's rows sit behind its
+// roster entry on desktop and are not drawn on mobile, so they cannot crowd the conversation out.
 const MAX_RETAINED_OWN_ITEMS = 1024
 // Bounds the memory and the rows every live delta re-derives the transcript over.
 const MAX_RETAINED_ITEMS = 4 * MAX_RETAINED_OWN_ITEMS
