@@ -33,7 +33,10 @@ import type { NativeChatResolvedPrompt } from './native-chat-resolution-receipt'
 import type { NativeChatTurnDiff } from './native-chat-turn-diffs'
 import { compareMessages } from './native-chat-session-assembler'
 import {
+  NO_NATIVE_CHAT_SUBAGENT_CHOICES,
   NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
+  type NativeChatSubagentChoices,
+  type NativeChatSubagentRosterState,
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
 import { nativeChatSubagentLiveSections } from './native-chat-subagent-live-frontier'
@@ -74,9 +77,9 @@ export type NativeChatMessageSlot = {
   /** Whether this row's turn hides anything, so its status row offers a caret. */
   turnFolds: boolean
   turnDiff: NativeChatTurnDiff | undefined
-  /** On a roster row: the subagents whose sections open under it, and whether
-   *  the reader opened each. */
-  subagentSections: ReadonlyMap<string, boolean> | undefined
+  /** On a roster row: whether its list is open, and the subagents whose sections open
+   *  under it, each with whether it is open. A closed list draws none of them. */
+  subagentRoster: NativeChatSubagentRosterState | undefined
   /** Subagent sections this row sits inside; 0 is the conversation. */
   depth: number
   /** Height to reserve before the row has ever been measured. */
@@ -101,8 +104,7 @@ export type NativeChatTranscriptSlotsInput = {
   /** Session-level lifecycle, which outlives a transcript that never said "done". */
   lifecycleWorking: boolean
   subagentSections?: NativeChatSubagentSections
-  /** Sections the reader opened (true) or closed (false) by hand. */
-  subagentSectionChoices?: ReadonlyMap<string, boolean>
+  subagentChoices?: NativeChatSubagentChoices
 }
 
 /** Whether a row moves its agent past the run above it. An approval's receipt
@@ -141,22 +143,20 @@ export function buildNativeChatTranscriptSlots(
     isWorking,
     lifecycleWorking,
     subagentSections: sections = NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
-    subagentSectionChoices: sectionChoices = NO_SECTION_CHOICES
+    subagentChoices: choices = NO_NATIVE_CHAT_SUBAGENT_CHOICES
   } = input
   // One pass to decide what each row draws, then the fold over those readings —
   // so "is this the answer" and "does this row render prose" cannot disagree.
-  const foldRows: NativeChatTurnFoldRow[] = messages.map((message, index) => {
-    return {
-      turnKey: turnKeys[index],
-      role: message.role,
-      rendersProse: rendersProse(message),
-      // The raw blocks, not the renderable ones: a childless roster draws no row
-      // and its plain-text twin is then the only record the spawn happened.
-      outlivesTurn: message.blocks.some(
-        (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
-      )
-    }
-  })
+  const foldRows: NativeChatTurnFoldRow[] = messages.map((message, index) => ({
+    turnKey: turnKeys[index],
+    role: message.role,
+    rendersProse: rendersProse(message),
+    // The raw blocks, not the renderable ones: a childless roster draws no row
+    // and its plain-text twin is then the only record the spawn happened.
+    outlivesTurn: message.blocks.some(
+      (block) => isSubagentGroupBlock(block) || isBackgroundTaskBlock(block)
+    )
+  }))
   // Liveness is the turn's, not any one call's: the run at the frontier stays
   // live between its calls, and a run the agent has moved past is settled even
   // while its last call is still reporting.
@@ -177,7 +177,7 @@ export function buildNativeChatTranscriptSlots(
   })
   const slots: NativeChatTranscriptSlot[] = []
   const live = nativeChatSubagentLiveSections(messages, sections, isWorking || lifecycleWorking)
-  const sectionSlots = subagentSectionSlots({ sections, sectionChoices, live, receipts, slots })
+  const sectionSlots = subagentSectionSlots({ sections, choices, live, receipts, slots })
   const pending = [...(sections.openAt.get(null) ?? [])]
   for (const [index, message] of messages.entries()) {
     sectionSlots.openBefore(pending, message, 0)
@@ -212,7 +212,7 @@ export function buildNativeChatTranscriptSlots(
         folded,
         turnFolds: turnKey !== undefined && foldableTurnKeys.has(turnKey),
         turnDiff,
-        subagentSections: sectionSlots.sectionsAt(message.id),
+        subagentRoster: sectionSlots.rosterAt(message.id),
         depth: 0,
         estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
           hasReceipt: receipt !== undefined,
@@ -228,30 +228,26 @@ export function buildNativeChatTranscriptSlots(
   return slots
 }
 
-const NO_SECTION_CHOICES: ReadonlyMap<string, boolean> = new Map()
-
 /** Emits subagent sections into `slots`: one the session spawned after the roster
- *  row that names it, once open; any other's head where its first row happened,
- *  and its rows once open. A section is open while it is its running scope's live
- *  frontier (`live`); the reader's choice outranks that. */
+ *  row that names it, once open and unless the reader closed that row's list; any
+ *  other's head where its first row happened, and its rows once open. A section is
+ *  open while it is its running scope's live frontier (`live`); the reader's choice
+ *  outranks that. A roster list is open while a section under it is, unless the
+ *  reader chose otherwise. */
 function subagentSectionSlots({
   sections,
-  sectionChoices,
+  choices,
   live,
   receipts,
   slots
 }: {
   sections: NativeChatSubagentSections
-  sectionChoices: ReadonlyMap<string, boolean>
+  choices: NativeChatSubagentChoices
   live: ReadonlySet<string>
   receipts: ReadonlyMap<string, NativeChatResolvedPrompt>
   slots: NativeChatTranscriptSlot[]
 }) {
-  const isLive = (agentId: string): boolean => {
-    const entry = sections.entries.get(agentId)
-    return entry !== undefined && normalizeSubagentState(entry.state) === 'working'
-  }
-  const isOpen = (agentId: string): boolean => sectionChoices.get(agentId) ?? live.has(agentId)
+  const isOpen = (agentId: string): boolean => choices.sections.get(agentId) ?? live.has(agentId)
   const pushHead = (agentId: string, depth: number, turnKey: string | undefined): void => {
     slots.push({
       kind: 'subagent',
@@ -268,7 +264,8 @@ function subagentSectionSlots({
   const pushRows = (agentId: string, depth: number, turnKey: string | undefined): void => {
     const rows = sections.rows.get(agentId) ?? []
     // The agent's own frontier: its trailing run is live while the agent works.
-    const working = isLive(agentId)
+    const entry = sections.entries.get(agentId)
+    const working = entry !== undefined && normalizeSubagentState(entry.state) === 'working'
     const trailing = rows.findLastIndex((row) =>
       speaksOrActs(row.message, rendersProse(row.message), receipts)
     )
@@ -290,7 +287,7 @@ function subagentSectionSlots({
         folded: false,
         turnFolds: false,
         turnDiff: undefined,
-        subagentSections: undefined,
+        subagentRoster: undefined,
         depth,
         estimatedHeight: estimateNativeChatRowHeight(nativeChatRowContentMetrics(message), {
           hasReceipt: receipt !== undefined,
@@ -333,17 +330,20 @@ function subagentSectionSlots({
     /** The open sections of the subagents a roster row names, in roster order. */
     openAnchoredAt(messageId: string, depth: number, turnKey: string | undefined): void {
       for (const agentId of sections.anchoredAt.get(messageId) ?? []) {
-        if (isOpen(agentId)) {
+        if (isOpen(agentId) && choices.rosters.get(messageId) !== false) {
           pushHead(agentId, depth, turnKey)
           pushRows(agentId, depth + 1, turnKey)
         }
       }
     },
-    sectionsAt(messageId: string): ReadonlyMap<string, boolean> | undefined {
+    rosterAt(messageId: string): NativeChatSubagentRosterState | undefined {
       const anchored = sections.anchoredAt.get(messageId)
       return anchored === undefined
         ? undefined
-        : new Map(anchored.map((agentId) => [agentId, isOpen(agentId)]))
+        : {
+            open: choices.rosters.get(messageId) ?? anchored.some(isOpen),
+            sections: new Map(anchored.map((agentId) => [agentId, isOpen(agentId)]))
+          }
     }
   }
 }

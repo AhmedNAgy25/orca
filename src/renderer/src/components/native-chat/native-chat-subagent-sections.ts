@@ -41,6 +41,29 @@ export type NativeChatSubagentSections = {
   pathOf: ReadonlyMap<string, readonly string[]>
 }
 
+/** What the reader opened (true) or closed (false) by hand: each subagent's section, and
+ *  each roster row's list, which hides the sections under that row while it is closed. */
+export type NativeChatSubagentChoices = {
+  sections: ReadonlyMap<string, boolean>
+  rosters: ReadonlyMap<string, boolean>
+}
+
+export const NO_NATIVE_CHAT_SUBAGENT_CHOICES: NativeChatSubagentChoices = {
+  sections: new Map(),
+  rosters: new Map()
+}
+
+/** A roster row's list: open or closed, and the sections under it, each open or closed. */
+export type NativeChatSubagentRosterState = {
+  open: boolean
+  sections: ReadonlyMap<string, boolean>
+}
+
+export type NativeChatSubagentDisclosure = {
+  setSectionOpen: (agentId: string, open: boolean) => void
+  setRosterOpen: (rosterRowId: string, open: boolean) => void
+}
+
 export const NO_NATIVE_CHAT_SUBAGENT_SECTIONS: NativeChatSubagentSections = {
   rows: new Map(),
   entries: new Map(),

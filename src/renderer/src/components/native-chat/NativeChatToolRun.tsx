@@ -38,6 +38,10 @@ import { NativeChatTaskList } from './NativeChatTaskList'
 import { buildNativeChatTaskListRows } from './native-chat-task-list-history'
 import { NativeChatBackgroundTaskRun } from './NativeChatBackgroundTaskRun'
 import { NativeChatSubagentRun } from './NativeChatSubagentRun'
+import type {
+  NativeChatSubagentDisclosure,
+  NativeChatSubagentRosterState
+} from './native-chat-subagent-sections'
 import { NativeChatToolRunIcon } from './NativeChatToolIcon'
 
 /** Stable empty default: a fresh array literal per render breaks memoization. */
@@ -53,8 +57,8 @@ export function NativeChatToolRun({
   revealedDiff,
   onRevealDiff,
   subagentGroups = NO_SUBAGENT_GROUPS,
-  subagentSections,
-  onSetSubagentSectionOpen,
+  subagentRoster,
+  subagentDisclosure,
   backgroundTasks = NO_BACKGROUND_TASKS,
   expandSignal,
   activeTurnIsWorking,
@@ -71,9 +75,9 @@ export function NativeChatToolRun({
   onRevealDiff?: (element: HTMLElement) => void
   /** Spawn-group rosters that belong with this run's activity, one row each. */
   subagentGroups?: NativeChatSubagentGroupBlock[]
-  /** The rosters' children whose rows open below this run, and whether each is open. */
-  subagentSections?: ReadonlyMap<string, boolean>
-  onSetSubagentSectionOpen?: (agentId: string, open: boolean) => void
+  /** The rosters' list state, and their children whose rows open below this run. */
+  subagentRoster?: NativeChatSubagentRosterState
+  subagentDisclosure?: NativeChatSubagentDisclosure
   /** Background tasks that belong with this run's activity, one row each. */
   backgroundTasks?: NativeChatBackgroundTaskBlock[]
   /** Legacy view-level default; production native-chat entry points pass false. */
@@ -114,8 +118,14 @@ export function NativeChatToolRun({
       <NativeChatSubagentRun
         key={group.groupId}
         block={group}
-        sections={subagentSections}
-        onSetSectionOpen={onSetSubagentSectionOpen}
+        open={subagentRoster?.open}
+        onSetOpen={
+          subagentRoster && subagentDisclosure && disclosureId !== undefined
+            ? (open) => subagentDisclosure.setRosterOpen(disclosureId, open)
+            : undefined
+        }
+        sections={subagentRoster?.sections}
+        onSetSectionOpen={subagentDisclosure?.setSectionOpen}
       />
     ))
   // Neither a roster nor a background task is tool activity, so both take every

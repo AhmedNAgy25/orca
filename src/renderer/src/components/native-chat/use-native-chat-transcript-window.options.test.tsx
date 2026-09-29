@@ -59,7 +59,7 @@ function slot(id: string): NativeChatMessageSlot {
     folded: false,
     turnFolds: false,
     turnDiff: undefined,
-    subagentSections: undefined,
+    subagentRoster: undefined,
     depth: 0,
     estimatedHeight: 48
   }

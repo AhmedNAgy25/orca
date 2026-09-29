@@ -22,6 +22,10 @@ import {
   ProviderFrameRow
 } from './NativeChatTranscriptChrome'
 import type { NativeChatDiffReveal } from './native-chat-turn-diffs'
+import type {
+  NativeChatSubagentDisclosure,
+  NativeChatSubagentRosterState
+} from './native-chat-subagent-sections'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 
 /** What a user message says under it when it did not go through, with its own Retry when the
@@ -47,8 +51,8 @@ export const MessageRow = memo(function MessageRow({
   deliveryNotice,
   structuredActivityUi = true,
   folded = false,
-  subagentSections,
-  onSetSubagentSectionOpen,
+  subagentRoster,
+  subagentDisclosure,
   runtimeContext
 }: {
   message: NativeChatMessage
@@ -67,9 +71,9 @@ export const MessageRow = memo(function MessageRow({
   structuredActivityUi?: boolean
   /** Behind a folded turn: the row keeps only what outlives the turn. */
   folded?: boolean
-  /** On a roster row: the subagents whose rows open below it, and whether each is open. */
-  subagentSections?: ReadonlyMap<string, boolean>
-  onSetSubagentSectionOpen?: (agentId: string, open: boolean) => void
+  /** On a roster row: its list's state and the subagents whose rows open below it. */
+  subagentRoster?: NativeChatSubagentRosterState
+  subagentDisclosure?: NativeChatSubagentDisclosure
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element | null {
   const rowRef = useRef<HTMLDivElement | null>(null)
@@ -234,8 +238,8 @@ export const MessageRow = memo(function MessageRow({
           onRevealDiff={onScrollMessageToTop}
           onLinkClick={onLinkClick}
           subagentGroups={subagentGroups}
-          subagentSections={subagentSections}
-          onSetSubagentSectionOpen={onSetSubagentSectionOpen}
+          subagentRoster={subagentRoster}
+          subagentDisclosure={subagentDisclosure}
           backgroundTasks={backgroundTasks}
           expandSignal={expandSignal}
           activeTurnIsWorking={activeTurnIsWorking}

@@ -63,11 +63,13 @@ function sectionsOf(rows: NativeChatMessage[]) {
   return { conversation, sections: nativeChatSubagentSections(conversation, subagentRows) }
 }
 
-/** `choices`: the sections the reader opened (true) or closed (false) by hand. */
+/** `choices` and `rosters`: the sections and roster lists the reader opened (true) or
+ *  closed (false) by hand. */
 function slotsOf(
   rows: NativeChatMessage[],
   choices: Record<string, boolean> = {},
-  isWorking = false
+  isWorking = false,
+  rosters: Record<string, boolean> = {}
 ): NativeChatTranscriptSlot[] {
   const { conversation, sections } = sectionsOf(rows)
   let turn: string | undefined
@@ -90,7 +92,10 @@ function slotsOf(
     isWorking,
     lifecycleWorking: false,
     subagentSections: sections,
-    subagentSectionChoices: new Map(Object.entries(choices))
+    subagentChoices: {
+      sections: new Map(Object.entries(choices)),
+      rosters: new Map(Object.entries(rosters))
+    }
   })
 }
 
@@ -130,9 +135,10 @@ describe("a subagent's rows live in its own section", () => {
     const slots = slotsOf(settled)
     expect(outline(slots)).toEqual(['ask', 'spawn', 'answer'])
     const spawn = slots[1]
-    expect(spawn?.kind === 'message' ? spawn.subagentSections : null).toEqual(
-      new Map([['task-1', false]])
-    )
+    expect(spawn?.kind === 'message' ? spawn.subagentRoster : null).toEqual({
+      open: false,
+      sections: new Map([['task-1', false]])
+    })
   })
 
   it('opens them under the roster that names the agent, headed by its name', () => {
@@ -285,6 +291,30 @@ describe("a subagent's section is open while it is the session's live frontier",
       'spawn',
       'answer'
     ])
+  })
+
+  it("opens a roster's list while a section under it is open, and a list the reader closed hides them", () => {
+    const rosterOf = (slots: NativeChatTranscriptSlot[]) =>
+      slots.flatMap((slot) =>
+        slot.kind === 'message' && slot.subagentRoster ? [slot.subagentRoster] : []
+      )
+    const live = slotsOf(waiting('working'), {}, true)
+    expect(rosterOf(live)).toEqual([{ open: true, sections: new Map([['task-1', true]]) }])
+    expect(rosterOf(slotsOf(waiting('working'))).map(({ open }) => open)).toEqual([false])
+
+    const closed = slotsOf(waiting('working'), {}, true, { spawn: false })
+    expect(outline(closed)).toEqual(['ask', 'spawn'])
+    expect(rosterOf(closed)).toEqual([{ open: false, sections: new Map([['task-1', true]]) }])
+    // The section's own choice waits behind the closed list.
+    const chosen = transcriptWith('completed')
+    expect(outline(slotsOf(chosen, { 'task-1': true }, false, { spawn: false }))).toEqual([
+      'ask',
+      'spawn',
+      'answer'
+    ])
+    expect(outline(slotsOf(chosen, { 'task-1': true }, false, { spawn: true }))).toEqual(
+      OPEN_UNDER_ROSTER
+    )
   })
 
   it('stays closed while the session is not running', () => {

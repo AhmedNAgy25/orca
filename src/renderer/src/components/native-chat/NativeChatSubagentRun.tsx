@@ -149,7 +149,8 @@ function SubagentElapsed({
  *  the tokens they consumed. Each child is one entry here; the child's own rows
  *  are never the conversation's. A child the session spawned shows them in a
  *  section below this row, open while the running session's newest output is part
- *  of delegating to it; its entry is where the reader overrides that.
+ *  of delegating to it; its entry is where the reader overrides that. The entries
+ *  show while a section is open, and closing them closes every section under them.
  *
  *  Every state is drawn exactly as the journal recorded it. Turn state is NOT
  *  consulted: `spawn_agent` children outlive the turn that spawned them and keep
@@ -160,15 +161,22 @@ function SubagentElapsed({
  *  journal open when the host itself died mid-flight. */
 export function NativeChatSubagentRun({
   block,
+  open: heldOpen,
+  onSetOpen,
   sections,
   onSetSectionOpen
 }: {
   block: NativeChatSubagentGroupBlock
+  /** Whether the entries show, when the transcript holds that past this row's lifetime. */
+  open?: boolean
+  onSetOpen?: (open: boolean) => void
   /** The children whose rows open below this row, and whether each is open. */
   sections?: ReadonlyMap<string, boolean>
   onSetSectionOpen?: (agentId: string, open: boolean) => void
 }): React.JSX.Element | null {
-  const [open, setOpen] = useState(false)
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = heldOpen ?? localOpen
+  const setOpen = onSetOpen ?? setLocalOpen
   const agents = block.agents
   const summary = useMemo(() => summarizeSubagentGroup(agents), [agents])
   if (summary.total === 0) {
@@ -214,7 +222,7 @@ export function NativeChatSubagentRun({
     <div>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className="group/subagent-run flex min-h-6 w-full items-center gap-1.5 rounded-md py-0.5 text-left text-sm leading-relaxed text-muted-foreground hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
         aria-expanded={open}
         aria-live="polite"
@@ -282,7 +290,11 @@ export function NativeChatSubagentRun({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => onSetSectionOpen?.(agent.id, !sectionOpen)}
+                    onClick={() => {
+                      // The reader is using the list: closing this section keeps it open.
+                      setOpen(true)
+                      onSetSectionOpen?.(agent.id, !sectionOpen)
+                    }}
                     aria-expanded={sectionOpen}
                     className="group/subagent-entry flex w-full items-center gap-1.5 rounded-md py-0.5 text-left hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
                   >

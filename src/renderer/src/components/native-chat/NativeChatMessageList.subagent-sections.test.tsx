@@ -134,9 +134,52 @@ describe("a subagent's rows in the transcript", () => {
 
     expect(screen.getByText('Edited file')).toBeInTheDocument()
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+    // Its entry in the roster's list and its section's head.
     expect(
-      screen.getByRole('button', { name: /explore the lane/, expanded: true })
-    ).toBeInTheDocument()
+      screen.getAllByRole('button', { name: /explore the lane/, expanded: true })
+    ).toHaveLength(2)
+  })
+
+  it('reveals an edit under a roster list the reader closed', () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollTo').mockImplementation(() => {})
+    renderList()
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
+    fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
+
+    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ran 1 subagent/, expanded: true })).toBeVisible()
+  })
+
+  it('keeps a roster list open or closed past its row unmounting, and hides its sections while closed', () => {
+    const items = itemsWith('completed', true)
+    const view = (withRoster: boolean) => {
+      const shown = withRoster ? items : items.filter((next) => next.itemId !== 'spawn')
+      return (
+        <NativeChatMessageList
+          session={session(projectStructuredItemsToNativeChat(shown))}
+          journalItems={shown}
+          isWorking={false}
+          expandSignal={false}
+          fontScale={1}
+        />
+      )
+    }
+    const { rerender } = render(view(true))
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
+    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
+
+    rerender(view(false))
+    rerender(view(true))
+    expect(screen.getByRole('button', { name: /Ran 1 subagent/, expanded: true })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+    expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Ran 1 subagent/ }))
+    expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()
   })
 
   it('opens a working subagent while the session waits on it, and closes it once the parent moves on', () => {
@@ -150,11 +193,13 @@ describe("a subagent's rows in the transcript", () => {
 
   it("keeps the reader's choice over the frontier, in either direction", () => {
     const { rerender } = render(listOf('working', true))
-    fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: true }))
+    // The open section opens its roster's list; its entry comes before its head.
+    const [entry] = screen.getAllByRole('button', { name: /explore the lane/, expanded: true })
+    fireEvent.click(entry!)
     rerender(listOf('working', true))
     expect(screen.queryByText('The PR is CLEAN.')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /Kicked off 1 subagent/ }))
+    // Closing the section from its entry left the list open.
     fireEvent.click(screen.getByRole('button', { name: /explore the lane/, expanded: false }))
     rerender(listOf('working'))
     expect(screen.getByText('The PR is CLEAN.')).toBeInTheDocument()

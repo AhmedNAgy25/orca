@@ -7,6 +7,7 @@ import { NativeChatResolutionReceipt } from './NativeChatResolutionReceipt'
 import { NativeChatWorkingStatus } from './NativeChatWorkingStatus'
 import { NativeChatTurnDiffRollup } from './NativeChatTurnDiffRollup'
 import { NativeChatSubagentSectionHead } from './NativeChatSubagentSectionHead'
+import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sections'
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
@@ -25,7 +26,7 @@ export type NativeChatTranscriptRowContext = {
   runtimeContext?: RuntimeFileOperationArgs | null
   onLinkClick?: CommentMarkdownLinkClickHandler
   onToggleExpandedTurn: (turnKey: string) => void
-  onSetSubagentSectionOpen: (agentId: string, open: boolean) => void
+  subagentDisclosure: NativeChatSubagentDisclosure
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
 }
@@ -55,7 +56,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           agentId={slot.agentId}
           entry={slot.entry}
           expanded={slot.expanded}
-          onSetOpen={context.onSetSubagentSectionOpen}
+          onSetOpen={context.subagentDisclosure.setSectionOpen}
         />
       </div>
     )
@@ -84,8 +85,8 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           deliveryNotice={context.deliveryNotices?.get(message.id)}
           structuredActivityUi={context.showTurnStatus}
           folded={slot.folded}
-          subagentSections={slot.subagentSections}
-          onSetSubagentSectionOpen={context.onSetSubagentSectionOpen}
+          subagentRoster={slot.subagentRoster}
+          subagentDisclosure={context.subagentDisclosure}
           runtimeContext={context.runtimeContext}
         />
       )}

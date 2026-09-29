@@ -1,18 +1,30 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatSubagentRow } from '../../../../shared/native-chat-transcript-projection'
 import type { StructuredAgentSubagentRoster } from '../../../../shared/structured-agent-session-subagent-roster'
 import { chooseNativeChatExpanded } from './native-chat-expanded-keys'
 import {
+  NO_NATIVE_CHAT_SUBAGENT_CHOICES,
   nativeChatSubagentRowsInOrder,
   nativeChatSubagentSections,
+  type NativeChatSubagentChoices,
+  type NativeChatSubagentDisclosure,
   type NativeChatSubagentSections
 } from './native-chat-subagent-sections'
 
-const NO_CHOICES: ReadonlyMap<string, boolean> = new Map()
+function choose(
+  current: NativeChatSubagentChoices,
+  kind: keyof NativeChatSubagentChoices,
+  key: string,
+  open: boolean
+): NativeChatSubagentChoices {
+  const next = chooseNativeChatExpanded(current[kind], key, open)
+  return next === current[kind] ? current : { ...current, [kind]: next }
+}
 
-/** The transcript's subagent sections, and the ones the reader opened or closed by
- *  hand. Everything else is open only at its running scope's live frontier. */
+/** The transcript's subagent sections, and the sections and roster lists the reader
+ *  opened or closed by hand. Every other section is open only at its running scope's
+ *  live frontier; every other roster list, while a section under it is open. */
 export function useNativeChatSubagentSections(
   conversation: readonly NativeChatMessage[],
   subagentRows: ReadonlyMap<string, readonly NativeChatSubagentRow[]>,
@@ -21,9 +33,10 @@ export function useNativeChatSubagentSections(
   sections: NativeChatSubagentSections
   /** Every subagent row in transcript order; kept while only the conversation changes. */
   subagentRowsInOrder: readonly NativeChatSubagentRow[]
-  subagentSectionChoices: ReadonlyMap<string, boolean>
-  setSubagentSectionOpen: (agentId: string, open: boolean) => void
-  /** Opens the sections a row sits in, so a reveal of that row can land. */
+  subagentChoices: NativeChatSubagentChoices
+  subagentDisclosure: NativeChatSubagentDisclosure
+  /** Opens the sections a row sits in, and the roster lists they sit under, so a reveal
+   *  of that row can land. */
   openSubagentSections: (agentIds: readonly string[]) => void
 } {
   const sections = useMemo(
@@ -34,23 +47,39 @@ export function useNativeChatSubagentSections(
     () => nativeChatSubagentRowsInOrder(subagentRows),
     [subagentRows]
   )
-  const [subagentSectionChoices, setChoices] = useState(NO_CHOICES)
-  const setSubagentSectionOpen = useCallback((agentId: string, open: boolean) => {
-    setChoices((current) => chooseNativeChatExpanded(current, agentId, open))
-  }, [])
+  const [subagentChoices, setChoices] = useState(NO_NATIVE_CHAT_SUBAGENT_CHOICES)
+  const subagentDisclosure = useMemo<NativeChatSubagentDisclosure>(
+    () => ({
+      setSectionOpen: (agentId, open) =>
+        setChoices((current) => choose(current, 'sections', agentId, open)),
+      setRosterOpen: (rosterRowId, open) =>
+        setChoices((current) => choose(current, 'rosters', rosterRowId, open))
+    }),
+    []
+  )
+  // Read only by a reveal, so the callback keeps one identity while the transcript streams.
+  const sectionsRef = useRef(sections)
+  useLayoutEffect(() => {
+    sectionsRef.current = sections
+  }, [sections])
   const openSubagentSections = useCallback((agentIds: readonly string[]) => {
+    const { anchoredAt, rosters } = sectionsRef.current
+    const rosterRowIds = agentIds.flatMap((agentId) => {
+      const rowId = rosters.get(agentId)?.rowId
+      return rowId !== undefined && anchoredAt.get(rowId)?.includes(agentId) ? [rowId] : []
+    })
     setChoices((current) =>
-      agentIds.reduce(
-        (choices, agentId) => chooseNativeChatExpanded(choices, agentId, true),
-        current
+      rosterRowIds.reduce(
+        (choices, rowId) => choose(choices, 'rosters', rowId, true),
+        agentIds.reduce((choices, agentId) => choose(choices, 'sections', agentId, true), current)
       )
     )
   }, [])
   return {
     sections,
     subagentRowsInOrder,
-    subagentSectionChoices,
-    setSubagentSectionOpen,
+    subagentChoices,
+    subagentDisclosure,
     openSubagentSections
   }
 }
