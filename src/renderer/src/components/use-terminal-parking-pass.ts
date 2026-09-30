@@ -191,6 +191,13 @@ export function useTerminalParkingPass(controller: TerminalParkingFoundation): v
         pass.parkingTimers.set(worktreeId, timer)
       }
     }
+
+    return () => {
+      for (const timer of pass.parkingTimers.values()) {
+        window.clearTimeout(timer)
+      }
+      pass.parkingTimers.clear()
+    }
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- controller refs and setters preserve their original stable identities.
   }, [
     activeView,
