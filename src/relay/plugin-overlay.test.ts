@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   existsSync,
   lstatSync,
@@ -14,6 +14,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import * as atomicWrite from '../shared/opencode-plugin-atomic-write'
 import { PluginOverlayManager } from './plugin-overlay'
 import { resolvePiSourceAgentDir } from './plugin-overlay-env'
 
@@ -57,6 +58,20 @@ describe('PluginOverlayManager', () => {
     expect(existsSync(join(dir!, 'plugins', 'orca-opencode-status.js'))).toBe(false)
   })
 
+  it('writes overlay plugin atomically via writeOverlayOpenCodePluginAtomically', () => {
+    manager.setSources({ opencodePluginSource: 'export const V1 = 1' })
+    const spy = vi.spyOn(atomicWrite, 'writeOverlayOpenCodePluginAtomically')
+    try {
+      const dir = manager.materializeOpenCode('tab-atomic:0', undefined, 'opencode')
+      expect(dir).not.toBeNull()
+      const pluginPath = join(dir!, 'plugins', 'orca-opencode-status.js')
+      expect(spy).toHaveBeenCalledWith(pluginPath, 'export const V1 = 1')
+      expect(readFileSync(pluginPath, 'utf8')).toBe('export const V1 = 1')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('installs OpenCode plugins in the canonical XDG config roots', () => {
     manager.setSources({
       opencodePluginSource: 'v1 plugin',
@@ -94,9 +109,24 @@ describe('PluginOverlayManager', () => {
     expect(readFileSync(pluginPath, 'utf8')).toBe('v2 plugin, next release')
   })
 
+  it('installs canonical plugin atomically via writeCanonicalOpenCodePluginAtomically', () => {
+    const env = { XDG_CONFIG_HOME: join(homeDir, 'xdg') }
+    const pluginPath = join(homeDir, 'xdg', 'opencode', 'plugins', 'orca-opencode-status.js')
+    manager.setSources({ opencodePluginSource: 'v1 plugin' })
+
+    const spy = vi.spyOn(atomicWrite, 'writeCanonicalOpenCodePluginAtomically')
+    try {
+      expect(manager.installOpenCodePlugin('opencode', env)).toBe(true)
+      expect(spy).toHaveBeenCalledWith(pluginPath, 'v1 plugin')
+      expect(readFileSync(pluginPath, 'utf8')).toBe('v1 plugin')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   // Why: OpenCode 2 loads through a file-level symlink (dotfile managers) and stats its target.
   it.skipIf(process.platform === 'win32')(
-    'leaves a symlinked canonical plugin with current bytes untouched',
+    'leaves a symlinked canonical plugin with current bytes untouched and updates its target when stale',
     () => {
       const env = { XDG_CONFIG_HOME: join(homeDir, 'xdg') }
       const pluginsDir = join(homeDir, 'xdg', 'opencode', 'plugins')
@@ -115,9 +145,9 @@ describe('PluginOverlayManager', () => {
 
       manager.setSources({ opencode2PluginSource: 'v2 plugin, next release' })
       expect(manager.installOpenCodePlugin('opencode2', env)).toBe(true)
-      expect(lstatSync(pluginPath).isFile()).toBe(true)
+      expect(lstatSync(pluginPath).isSymbolicLink()).toBe(true)
       expect(readFileSync(pluginPath, 'utf8')).toBe('v2 plugin, next release')
-      expect(readFileSync(targetPath, 'utf8')).toBe('v2 plugin')
+      expect(readFileSync(targetPath, 'utf8')).toBe('v2 plugin, next release')
     }
   )
 

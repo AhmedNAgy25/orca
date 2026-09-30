@@ -30,6 +30,7 @@ import {
   getOpenCodePluginSource
 } from './hook-service'
 import { resolveOpenCodeConfigDirectory } from '../../shared/opencode-config-directory'
+import * as atomicWrite from '../../shared/opencode-plugin-atomic-write'
 
 beforeEach(() => {
   setAppEnvironment({
@@ -145,6 +146,21 @@ describe('OpenCodeHookService buildPtyEnv / clearPty round-trip', () => {
     writeFileSync(pluginPath, 'stale plugin')
     service.buildPtyEnv(daemonSessionId)
     expect(readFileSync(pluginPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
+  })
+
+  it('installs canonical plugin atomically via writeCanonicalOpenCodePluginAtomically', () => {
+    const service = new OpenCodeHookService()
+    const pluginPath = join(resolveOpenCodeConfigDirectory(), 'plugins', 'orca-opencode-status.js')
+    writeFileSync(pluginPath, 'stale plugin')
+
+    const spy = vi.spyOn(atomicWrite, 'writeCanonicalOpenCodePluginAtomically')
+    try {
+      service.buildPtyEnv(daemonSessionId)
+      expect(spy).toHaveBeenCalledWith(pluginPath, _internals.getOpenCodePluginSource())
+      expect(readFileSync(pluginPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   // Why: OpenCode 2 loads through a file-level symlink (dotfile managers) and stats its target.
@@ -593,6 +609,27 @@ describe('OpenCodeHookService overlay mode (user OPENCODE_CONFIG_DIR set)', () =
 
     expect(statSync(pluginPath).mtimeMs).toBe(past.getTime())
     expect(readFileSync(pluginPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
+  })
+
+  it('installs overlay plugin atomically via writeOverlayOpenCodePluginAtomically when stale', () => {
+    const service = new OpenCodeHookService()
+    const overlayDir = join(
+      userDataDir,
+      'opencode-config-overlays',
+      toSafeDirName(`source:${userConfigDir}`)
+    )
+    const pluginPath = join(overlayDir, 'plugins', 'orca-opencode-status.js')
+    mkdirSync(join(overlayDir, 'plugins'), { recursive: true })
+    writeFileSync(pluginPath, 'stale plugin')
+
+    const spy = vi.spyOn(atomicWrite, 'writeOverlayOpenCodePluginAtomically')
+    try {
+      service.buildPtyEnv(ptyId, userConfigDir)
+      expect(spy).toHaveBeenCalledWith(pluginPath, _internals.getOpenCodePluginSource())
+      expect(readFileSync(pluginPath, 'utf8')).toBe(_internals.getOpenCodePluginSource())
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('reconciles stale mirrored entries while preserving OpenCode runtime files', () => {

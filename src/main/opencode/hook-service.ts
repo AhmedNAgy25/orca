@@ -8,7 +8,6 @@ import {
   readdirSync,
   realpathSync,
   statSync,
-  unlinkSync,
   writeFileSync
 } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -32,6 +31,10 @@ import {
   isInstalledOpenCodePluginCurrent,
   isOverlayOpenCodePluginCurrent
 } from '../../shared/opencode-installed-plugin'
+import {
+  writeCanonicalOpenCodePluginAtomically,
+  writeOverlayOpenCodePluginAtomically
+} from '../../shared/opencode-plugin-atomic-write'
 
 const ORCA_OPENCODE_PLUGIN_FILE = 'orca-opencode-status.js'
 const OPENCODE_OVERLAY_DIR = 'opencode-config-overlays'
@@ -277,19 +280,14 @@ export class OpenCodeHookService {
     this.writeOverlayManifest(overlayDir, nextManifest)
   }
 
-  // Why: pre-write unlink guards against POSIX writeFileSync writing through a mirrored symlink and clobbering a same-named user plugin.
+  // Why: atomic rename replaces any mirrored symlink without writing through and clobbering user plugins.
   private writePluginIntoOverlay(overlayDir: string): void {
     const pluginsDir = join(overlayDir, 'plugins')
     mkdirSync(pluginsDir, { recursive: true })
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
     if (!isOverlayOpenCodePluginCurrent(pluginPath, source)) {
-      try {
-        unlinkSync(pluginPath)
-      } catch {
-        // File may not exist on a fresh overlay; a real failure surfaces on writeFileSync below.
-      }
-      writeFileSync(pluginPath, source)
+      writeOverlayOpenCodePluginAtomically(pluginPath, source)
     }
   }
 
@@ -299,7 +297,7 @@ export class OpenCodeHookService {
     const pluginPath = join(pluginsDir, this.pluginFileName)
     const source = this.pluginSource()
     if (!isInstalledOpenCodePluginCurrent(pluginPath, source)) {
-      writeFileSync(pluginPath, source)
+      writeCanonicalOpenCodePluginAtomically(pluginPath, source)
     }
   }
 }
