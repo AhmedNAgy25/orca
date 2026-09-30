@@ -199,6 +199,7 @@ export class OrcaRuntimeWithApplyTrackedPtyTitle extends OrcaRuntimeWithGetUnper
     for (const leaf of this.getLeavesForPty(ptyId)) {
       leaf.lastOscTitle = null
       leaf.lastOscTitleAt = null
+      leaf.lastOscTitleStaleWorkingClear = false
       leaf.lastAgentStatus = null
       leaf.lastAgentStatusObservedLive = false
       leaf.waitBlockedAt = null

@@ -273,16 +273,6 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
-  // Why a fresh working first-party status comes before explicit title:
-  // an agent's own active turn report outranks a title, especially if the title
-  // was rewritten by a stale-title clear timer while output continues.
-  if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
-    // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
-    // when a dialog is on screen, so the screen read must still run.
-    return input.firstPartyStatus?.state === 'working'
-      ? WORKING
-      : { kind: 'pending', quietForeground: 'closed' }
-  }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.
   if (hasExplicitIdleTitle(input.record, input.rendererTitle) || input.readPositiveBodyEvidence()) {
@@ -292,6 +282,15 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   // and a fresh `working` cannot both hold — the same row carries one state.
   if (hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus)) {
     return READY_STRONG
+  }
+  // Why after tier 1: a genuine explicit idle title outranks retained working status,
+  // while timer-cleared titles are already rejected by hasExplicitIdleTitle.
+  if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
+    // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
+    // when a dialog is on screen, so the screen read must still run.
+    return input.firstPartyStatus?.state === 'working'
+      ? WORKING
+      : { kind: 'pending', quietForeground: 'closed' }
   }
   // Why after the veto: a first-party working account outranks inferred body evidence.
   // Why before the working title: Codex can leave a stale spinner title after a turn, and a
@@ -375,7 +374,9 @@ export function ptyTuiIdleEvidence(
     record: pty,
     readTailBlockedReason: () => detectTerminalWaitBlockedReason(waitText()),
     readPositiveBodyEvidence: () =>
-      (agent !== 'qoder' && source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
+      (!pty.lastOscTitleStaleWorkingClear &&
+        agent !== 'qoder' &&
+        source.getAdoptedPtyIdleStatus(pty) === 'idle') ||
       isKnownReadyPromptBody(
         waitText(),
         agent,
