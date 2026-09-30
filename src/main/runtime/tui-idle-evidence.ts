@@ -51,6 +51,7 @@ export type TuiIdleEvidenceRecord = {
   lastAgentStatus: AgentStatus | null
   lastOutputAt: number | null
   lastOscTitle?: string | null
+  lastOscTitleStaleWorkingClear?: boolean
 }
 
 export type FirstPartyAgentStatus = {
@@ -69,7 +70,15 @@ export function hasExplicitIdleTitle(
   // one dropped an explicit `Codex ready` to the tier-3 lane and delayed it by the
   // whole quiescence window.
   for (const title of [rendererTitle, record.lastOscTitle]) {
-    if (title && detectExplicitIdleStatusFromTitle(title) === 'idle') {
+    if (!title) {
+      continue
+    }
+    // Why: a title synthesized by the 3s stale-title clear timer is not genuine
+    // agent idle evidence; it must not satisfy tier 1 readiness.
+    if (record.lastOscTitleStaleWorkingClear && title === record.lastOscTitle) {
+      continue
+    }
+    if (detectExplicitIdleStatusFromTitle(title) === 'idle') {
       return true
     }
   }
@@ -264,6 +273,16 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
+  // Why a fresh working first-party status comes before explicit title:
+  // an agent's own active turn report outranks a title, especially if the title
+  // was rewritten by a stale-title clear timer while output continues.
+  if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
+    // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
+    // when a dialog is on screen, so the screen read must still run.
+    return input.firstPartyStatus?.state === 'working'
+      ? WORKING
+      : { kind: 'pending', quietForeground: 'closed' }
+  }
   // Why the title before the body: both are tier 1, so either settles, but the title is a
   // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.
   if (hasExplicitIdleTitle(input.record, input.rendererTitle) || input.readPositiveBodyEvidence()) {
@@ -273,13 +292,6 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   // and a fresh `working` cannot both hold — the same row carries one state.
   if (hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus)) {
     return READY_STRONG
-  }
-  if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
-    // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
-    // when a dialog is on screen, so the screen read must still run.
-    return input.firstPartyStatus?.state === 'working'
-      ? WORKING
-      : { kind: 'pending', quietForeground: 'closed' }
   }
   // Why after the veto: a first-party working account outranks inferred body evidence.
   // Why before the working title: Codex can leave a stale spinner title after a turn, and a

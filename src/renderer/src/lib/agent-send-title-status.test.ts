@@ -42,4 +42,10 @@ describe('detectAgentSendTitleStatus', () => {
       expect(detectAgentSendTitleStatus(title)).toBe('permission')
     }
   )
+
+  it('rejects timer-cleared stale working titles even if rewritten with idle marker', () => {
+    expect(
+      detectAgentSendTitleStatus('π > my-project', { staleWorkingTitleClear: true })
+    ).toBeNull()
+  })
 })

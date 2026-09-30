@@ -8,8 +8,17 @@ const CLAUDE_IDLE_PREFIX = '\u2733'
 const GEMINI_IDLE_PREFIX = '\u25c7'
 const PI_IDLE_PREFIX = '\u03c0 - '
 
-export function detectAgentSendTitleStatus(title: string | null | undefined): AgentStatus | null {
+export function detectAgentSendTitleStatus(
+  title: string | null | undefined,
+  meta?: { staleWorkingTitleClear?: boolean }
+): AgentStatus | null {
   if (!title || resolveTitleActivityLabel(title) === null) {
+    return null
+  }
+
+  // Why: timer-cleared titles are synthesized by the 3s stale timer and do not
+  // represent genuine agent rest; they must not authorize immediate sends.
+  if (meta?.staleWorkingTitleClear) {
     return null
   }
 
