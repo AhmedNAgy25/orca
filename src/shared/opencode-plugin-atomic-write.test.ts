@@ -4,6 +4,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -185,6 +186,7 @@ describe('opencode-plugin-atomic-write', () => {
       'EPERM: file locked'
     )
     expect(readFileSync(pluginPath, 'utf8')).toBe('original content')
+    expect(readdirSync(testDir).filter((name) => name.endsWith('.tmp'))).toEqual([])
 
     rmSync(testDir, { recursive: true, force: true })
   })
