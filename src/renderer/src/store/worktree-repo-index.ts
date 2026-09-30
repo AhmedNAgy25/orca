@@ -16,7 +16,7 @@ type WorktreeSnapshot = {
 // cross-render caching without pinning replaced store snapshots in memory.
 const worktreeSnapshotCache = new WeakMap<AppState['worktreesByRepo'], WorktreeSnapshot>()
 const repoMapCache = new WeakMap<AppState['repos'], Map<string, Repo>>()
-const EMPTY_WORKTREES_BY_ID: Worktree[] = []
+const EMPTY_WORKTREES_BY_ID: readonly Worktree[] = Object.freeze([])
 
 function getWorktreeSnapshot(worktreesByRepo: AppState['worktreesByRepo']): WorktreeSnapshot {
   const cachedSnapshot = worktreeSnapshotCache.get(worktreesByRepo)
@@ -87,7 +87,7 @@ export function getIndexedWorktreeMap(
 export function getIndexedWorktreesById(
   worktreesByRepo: AppState['worktreesByRepo'],
   worktreeId: string
-): Worktree[] {
+): readonly Worktree[] {
   return getWorktreeSnapshot(worktreesByRepo).worktreesById.get(worktreeId) ?? EMPTY_WORKTREES_BY_ID
 }
 
