@@ -99,7 +99,7 @@ describe('checkout', () => {
 
     it('skips empty lines and malformed entries cleanly', async () => {
       gitExecFileAsyncMock.mockResolvedValue({
-        stdout: '\n\n \tmain\n\n'
+        stdout: '\n\n \tmain\ngarbage\n\n'
       })
 
       const result = await listLocalBranches('/path/to/worktree')
