@@ -165,31 +165,6 @@ describe('SshGitProvider', () => {
     expect(result).toEqual(['dist/bundle.js'])
   })
 
-  it('normalizes Windows backslash paths to POSIX forward slashes for remote git', async () => {
-    mux.request.mockResolvedValue([])
-
-    await provider.checkIgnoredPaths('/home/user/repo', [
-      'dist\\bundle.js',
-      'src\\nested\\index.ts'
-    ])
-    expect(mux.request).toHaveBeenCalledWith('git.checkIgnored', {
-      worktreePath: '/home/user/repo',
-      paths: ['dist/bundle.js', 'src/nested/index.ts']
-    })
-
-    await provider.stageFile('/home/user/repo', 'src\\components\\App.tsx')
-    expect(mux.request).toHaveBeenCalledWith('git.stage', {
-      worktreePath: '/home/user/repo',
-      filePath: 'src/components/App.tsx'
-    })
-
-    await provider.bulkStageFiles('/home/user/repo', ['a\\b.ts', 'c\\d.ts'])
-    expect(mux.request).toHaveBeenCalledWith('git.bulkStage', {
-      worktreePath: '/home/user/repo',
-      filePaths: ['a/b.ts', 'c/d.ts']
-    })
-  })
-
   it('getHistory sends git.history request', async () => {
     const historyResult = {
       items: [],

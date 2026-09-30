@@ -381,8 +381,26 @@ describe('registerFilesystemHandlers', () => {
       [path.join('dist', 'bundle.js'), path.join('src', 'index.ts')],
       {}
     )
+    expect(sshProvider.checkIgnoredPaths).toHaveBeenCalledWith('/remote/repo', ['build/output.js'])
+  })
+
+  it('normalizes Windows backslashes to POSIX forward slashes for SSH checkIgnored', async () => {
+    registerWorktreeRootsForRepo(store as never, 'repo-1', [REPO_PATH])
+    const sshProvider = {
+      checkIgnoredPaths: vi.fn().mockResolvedValue([])
+    }
+    getSshGitProviderMock.mockReturnValue(sshProvider)
+
+    registerFilesystemHandlers(store as never)
+
+    await handlers.get('git:checkIgnored')!(null, {
+      worktreePath: '/remote/repo',
+      connectionId: 'ssh-1',
+      paths: ['src\\nested\\file.ts']
+    })
+
     expect(sshProvider.checkIgnoredPaths).toHaveBeenCalledWith('/remote/repo', [
-      path.join('build', 'output.js')
+      'src/nested/file.ts'
     ])
   })
 

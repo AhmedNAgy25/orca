@@ -144,7 +144,10 @@ export function registerFilesystemGitStatusHandlers(context: FilesystemHandlerCo
       args: { worktreePath: string; paths: string[]; connectionId?: string }
     ): Promise<string[]> => {
       if (args.connectionId) {
-        const paths = args.paths.map((p) => validateGitRelativeFilePath(args.worktreePath, p))
+        // Why: validateGitRelativeFilePath emits host-native backslashes on Windows; remote SSH Git requires POSIX forward slashes.
+        const paths = args.paths.map((p) =>
+          validateGitRelativeFilePath(args.worktreePath, p).replaceAll('\\', '/')
+        )
         const provider = getSshGitProvider(args.connectionId)
         if (!provider) {
           throw new Error(SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE)
