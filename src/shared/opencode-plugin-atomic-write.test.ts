@@ -230,4 +230,49 @@ describe('opencode-plugin-atomic-write', () => {
 
     rmSync(testDir, { recursive: true, force: true })
   })
+
+  it('resolves long dangling symlink chains and creates target without replacing intermediate links', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const testDir = mkdtempSync(join(tmpdir(), 'opencode-long-symlinks-'))
+    const missingTarget = join(testDir, 'final-target.js')
+    let current = missingTarget
+    const links: string[] = []
+    for (let i = 0; i < 15; i++) {
+      const nextLink = join(testDir, `link-${i}.js`)
+      symlinkSync(current, nextLink)
+      current = nextLink
+      links.push(nextLink)
+    }
+
+    writeCanonicalOpenCodePluginAtomically(current, 'long chain content')
+
+    expect(existsSync(missingTarget)).toBe(true)
+    expect(readFileSync(missingTarget, 'utf8')).toBe('long chain content')
+    for (const link of links) {
+      expect(lstatSync(link).isSymbolicLink()).toBe(true)
+    }
+
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('throws on symlink loop without replacing intermediate symlinks', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const testDir = mkdtempSync(join(tmpdir(), 'opencode-loop-symlinks-'))
+    const linkA = join(testDir, 'link-a.js')
+    const linkB = join(testDir, 'link-b.js')
+    symlinkSync(linkB, linkA)
+    symlinkSync(linkA, linkB)
+
+    expect(() => writeCanonicalOpenCodePluginAtomically(linkA, 'loop content')).toThrow(
+      /ELOOP|symbolic link/i
+    )
+    expect(lstatSync(linkA).isSymbolicLink()).toBe(true)
+    expect(lstatSync(linkB).isSymbolicLink()).toBe(true)
+
+    rmSync(testDir, { recursive: true, force: true })
+  })
 })

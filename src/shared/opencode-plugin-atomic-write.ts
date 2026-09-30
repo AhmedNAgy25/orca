@@ -41,11 +41,16 @@ export function resolveCanonicalPluginWritePath(pluginPath: string): string {
     }
   }
 
+  const visited = new Set<string>([pluginPath])
   let current = pluginPath
-  for (let depth = 0; depth < 10; depth++) {
+  for (let depth = 0; depth < 40; depth++) {
     try {
       const link = readlinkSync(current)
       current = resolve(dirname(current), link)
+      if (visited.has(current)) {
+        throw new Error(`Symbolic link loop detected resolving "${pluginPath}"`)
+      }
+      visited.add(current)
       const nextStat = lstatSync(current)
       if (!nextStat.isSymbolicLink()) {
         return current
@@ -57,7 +62,7 @@ export function resolveCanonicalPluginWritePath(pluginPath: string): string {
       throw error
     }
   }
-  return current
+  throw new Error(`Too many levels of symbolic links resolving "${pluginPath}"`)
 }
 
 // Why: write to sibling temp file and rename so concurrent reloads never observe a truncated or missing file.
