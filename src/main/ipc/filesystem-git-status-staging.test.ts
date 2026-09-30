@@ -404,6 +404,19 @@ describe('registerFilesystemHandlers', () => {
     ])
   })
 
+  it('rejects traversal paths in SSH checkIgnored even when backslashes bypass native validation', async () => {
+    registerWorktreeRootsForRepo(store as never, 'repo-1', [REPO_PATH])
+    registerFilesystemHandlers(store as never)
+
+    await expect(
+      handlers.get('git:checkIgnored')!(null, {
+        worktreePath: '/remote/repo',
+        connectionId: 'ssh-1',
+        paths: ['..\\secret.txt']
+      })
+    ).rejects.toThrow('Access denied: git file path escapes the selected worktree')
+  })
+
   it('routes abort merge through local and SSH git providers', async () => {
     registerWorktreeRootsForRepo(store as never, 'repo-1', [REPO_PATH, WORKTREE_FEATURE_PATH])
     abortMergeMock.mockResolvedValue(undefined)
