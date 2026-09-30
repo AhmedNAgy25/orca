@@ -273,9 +273,9 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
       ? READY_STRONG
       : { kind: 'pending', quietForeground: 'closed' }
   }
-  // Why the title before the body: both are tier 1, so either settles, but the title is a
-  // memoized lookup and the body is a fresh multi-KB scan. Same verdict, cheaper order.
-  if (hasExplicitIdleTitle(input.record, input.rendererTitle) || input.readPositiveBodyEvidence()) {
+  // Why explicit title before working status: a genuine idle title outranks retained working
+  // status, while timer-cleared titles are already rejected by hasExplicitIdleTitle.
+  if (hasExplicitIdleTitle(input.record, input.rendererTitle)) {
     return READY_STRONG
   }
   // Why beside the title lane, not after the veto: both are tier 1, and a first-party `done`
@@ -283,14 +283,17 @@ export function evaluateTuiIdle(input: TuiIdleEvaluationInput): TuiIdleVerdict {
   if (hasFreshDoneFirstPartyStatus(input.agent, input.firstPartyStatus)) {
     return READY_STRONG
   }
-  // Why after tier 1: a genuine explicit idle title outranks retained working status,
-  // while timer-cleared titles are already rejected by hasExplicitIdleTitle.
   if (hasFreshWorkingFirstPartyStatus(input.firstPartyStatus)) {
     // Why blocked/waiting stays pending: the agent says it is waiting on the user, which is
     // when a dialog is on screen, so the screen read must still run.
     return input.firstPartyStatus?.state === 'working'
       ? WORKING
       : { kind: 'pending', quietForeground: 'closed' }
+  }
+  // Why positive body evidence after fresh working status: a retained prompt from a previous turn
+  // in the terminal tail must not bypass a fresh active turn report.
+  if (input.readPositiveBodyEvidence()) {
+    return READY_STRONG
   }
   // Why after the veto: a first-party working account outranks inferred body evidence.
   // Why before the working title: Codex can leave a stale spinner title after a turn, and a

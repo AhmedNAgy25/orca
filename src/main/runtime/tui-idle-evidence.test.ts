@@ -157,6 +157,19 @@ describe('evaluateTuiIdle ranking', () => {
     expect(verdict).toEqual({ kind: 'ready-strong' })
   })
 
+  it('does not let positive body evidence bypass fresh first-party working status', () => {
+    const verdict = evaluateTuiIdle(
+      input({
+        ...noMuse,
+        agent: 'claude',
+        record: record({ lastAgentStatus: null }),
+        readPositiveBodyEvidence: () => true,
+        firstPartyStatus: { state: 'working', updatedAt: Date.now() }
+      })
+    )
+    expect(verdict).toEqual({ kind: 'working' })
+  })
+
   it('calls a name-only title weak, even for an agent it is the only rest signal of', () => {
     const verdict = evaluateTuiIdle(
       input({ ...noMuse, agent: 'grok', record: record({ lastAgentStatus: 'idle' }) })
