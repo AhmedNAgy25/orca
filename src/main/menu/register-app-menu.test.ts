@@ -293,6 +293,22 @@ describe('registerAppMenu', () => {
     }
   )
 
+  it.each(['darwin', 'linux', 'win32'] as const)(
+    'preserves terminal Ctrl+M by disabling minimize accelerator on %s',
+    (platform) => {
+      vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+      registerAppMenu(buildMenuOptions())
+
+      const windowSubmenu = getSubmenu(getTemplate(), 'Window')
+      const expectedRegistration = platform === 'darwin' ? undefined : false
+      const minimizeItem = windowSubmenu.find((item) => item.role === 'minimize')
+
+      expect(minimizeItem?.accelerator).toBeUndefined()
+      expect(minimizeItem && 'registerAccelerator' in minimizeItem).toBe(platform !== 'darwin')
+      expect(minimizeItem?.registerAccelerator).toBe(expectedRegistration)
+    }
+  )
+
   it('keeps selection actions native in a focused guest webview', () => {
     const send = vi.fn()
     const guestContents = { copy: vi.fn(), selectAll: vi.fn() }

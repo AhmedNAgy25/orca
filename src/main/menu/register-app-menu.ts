@@ -8,20 +8,14 @@ import {
 import type { UpdateCheckOptions } from '../../shared/update-status-types'
 import { translateMain } from '../i18n/main-i18n'
 import { createAppMenuSelectionItem } from './app-menu-selection-item'
+import {
+  buildAppearanceSubmenu,
+  type AppearanceMenuKey,
+  type AppearanceMenuState,
+  getNextDefaultOnAppearanceSettingValue
+} from './app-menu-appearance'
 
-export type AppearanceMenuState = {
-  showTasksButton: boolean
-  showAutomationsButton: boolean
-  showMobileButton: boolean
-  showTitlebarAppName: boolean
-  statusBarVisible: boolean
-}
-
-export type AppearanceMenuKey = keyof AppearanceMenuState
-
-export function getNextDefaultOnAppearanceSettingValue(current: boolean | undefined): boolean {
-  return !(current !== false)
-}
+export { type AppearanceMenuKey, type AppearanceMenuState, getNextDefaultOnAppearanceSettingValue }
 
 type RegisterAppMenuOptions = {
   onOpenSettings: () => void
@@ -218,64 +212,14 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
     ]
   }
 
-  // Why: mirror VS Code's View > Appearance submenu so users can toggle
-  // sidebar/status-bar/tasks-button/titlebar-activity from the menu bar as
-  // well as from the settings pane. Electron doesn't reactively update
-  // menu items when the backing state changes, so rebuildAppMenu() must be
-  // called after every settings update — each build reads current
-  // appearance state through getAppearanceState() and produces a fresh
-  // template with accurate `checked` values.
-  const appearanceSubmenu: Electron.MenuItemConstructorOptions = {
-    label: translateMain('menu.appearance', 'Appearance'),
-    submenu: [
-      {
-        // Why: display-only shortcut hint — not a real accelerator. Cmd/Ctrl+B
-        // is intercepted in createMainWindow.ts's before-input-event handler
-        // with a TipTap-bold carve-out for markdown editors. Binding the
-        // accelerator here would steal the chord before that carve-out can
-        // fire. Sidebar open/closed lives in the renderer store (non-persisted),
-        // so we forward a toggle request rather than mirroring state in main.
-        label: `${translateMain('menu.toggleLeftSidebar', 'Toggle Left Sidebar')}\t${shortcutLabel('sidebar.left.toggle')}`,
-        click: () => onToggleLeftSidebar()
-      },
-      {
-        // Why: display-only shortcut hint for the same reason as above.
-        label: `${translateMain('menu.toggleRightSidebar', 'Toggle Right Sidebar')}\t${shortcutLabel('sidebar.right.toggle')}`,
-        click: () => onToggleRightSidebar()
-      },
-      {
-        label: translateMain('menu.showStatusBar', 'Show Status Bar'),
-        type: 'checkbox',
-        checked: appearance.statusBarVisible,
-        click: () => onToggleAppearance('statusBarVisible')
-      },
-      { type: 'separator' },
-      {
-        label: translateMain('menu.showTasksButton', 'Show Tasks Button'),
-        type: 'checkbox',
-        checked: appearance.showTasksButton,
-        click: () => onToggleAppearance('showTasksButton')
-      },
-      {
-        label: translateMain('menu.showAutomationsButton', 'Show Automations Button'),
-        type: 'checkbox',
-        checked: appearance.showAutomationsButton,
-        click: () => onToggleAppearance('showAutomationsButton')
-      },
-      {
-        label: translateMain('menu.showMobileButton', 'Show Orca Mobile Button'),
-        type: 'checkbox',
-        checked: appearance.showMobileButton,
-        click: () => onToggleAppearance('showMobileButton')
-      },
-      {
-        label: translateMain('menu.showTitlebarAppName', 'Show Titlebar App Name'),
-        type: 'checkbox',
-        checked: appearance.showTitlebarAppName,
-        click: () => onToggleAppearance('showTitlebarAppName')
-      }
-    ]
-  }
+  // Why: mirror View > Appearance submenu so users can toggle sidebar/status-bar/buttons from the menu bar.
+  const appearanceSubmenu = buildAppearanceSubmenu({
+    appearance,
+    shortcutLabel,
+    onToggleLeftSidebar,
+    onToggleRightSidebar,
+    onToggleAppearance
+  })
 
   const viewMenu: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.view', 'View'),
@@ -318,9 +262,13 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
     ]
   }
 
+  // Why: keep native menu hints while letting non-macOS Ctrl+M reach the focused terminal.
+  const minimizeOptions: Electron.MenuItemConstructorOptions = isMac
+    ? {}
+    : { registerAccelerator: false }
   const windowMenu: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.window', 'Window'),
-    submenu: [{ role: 'minimize' }, { role: 'zoom' }]
+    submenu: [{ role: 'minimize', ...minimizeOptions }, { role: 'zoom' }]
   }
 
   const helpMenu: Electron.MenuItemConstructorOptions = {
