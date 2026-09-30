@@ -7,11 +7,20 @@ import type { GitConflictOperation } from '../../shared/git-status-types'
 import type { GitAdmissionTier } from '../git/command-runner/git-exec-options'
 import { SshGitNoninteractiveProvider } from './ssh-git-noninteractive-provider'
 
+/**
+ * Remote SSH hosts run on POSIX-compliant environments where Git expects forward
+ * slashes ('/'). On Windows clients, path manipulation produces backslashes ('\')
+ * which remote Git treats as literal characters rather than path delimiters.
+ */
+function toPosixPath(filePath: string): string {
+  return filePath.replaceAll('\\', '/')
+}
+
 export class SshGitWorkingTreeProvider extends SshGitNoninteractiveProvider {
   async checkIgnoredPaths(worktreePath: string, relativePaths: string[]): Promise<string[]> {
     return (await this.mux.request('git.checkIgnored', {
       worktreePath,
-      paths: relativePaths
+      paths: relativePaths.map(toPosixPath)
     })) as string[]
   }
 
@@ -40,37 +49,46 @@ export class SshGitWorkingTreeProvider extends SshGitNoninteractiveProvider {
 
   async stageFile(worktreePath: string, filePath: string): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.stage', { worktreePath, filePath })
+      await this.mux.request('git.stage', { worktreePath, filePath: toPosixPath(filePath) })
     })
   }
 
   async unstageFile(worktreePath: string, filePath: string): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.unstage', { worktreePath, filePath })
+      await this.mux.request('git.unstage', { worktreePath, filePath: toPosixPath(filePath) })
     })
   }
 
   async bulkStageFiles(worktreePath: string, filePaths: string[]): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.bulkStage', { worktreePath, filePaths })
+      await this.mux.request('git.bulkStage', {
+        worktreePath,
+        filePaths: filePaths.map(toPosixPath)
+      })
     })
   }
 
   async bulkUnstageFiles(worktreePath: string, filePaths: string[]): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.bulkUnstage', { worktreePath, filePaths })
+      await this.mux.request('git.bulkUnstage', {
+        worktreePath,
+        filePaths: filePaths.map(toPosixPath)
+      })
     })
   }
 
   async discardChanges(worktreePath: string, filePath: string): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.discard', { worktreePath, filePath })
+      await this.mux.request('git.discard', { worktreePath, filePath: toPosixPath(filePath) })
     })
   }
 
   async bulkDiscardChanges(worktreePath: string, filePaths: string[]): Promise<void> {
     await this.runWithGitReadInvalidation(async () => {
-      await this.mux.request('git.bulkDiscard', { worktreePath, filePaths })
+      await this.mux.request('git.bulkDiscard', {
+        worktreePath,
+        filePaths: filePaths.map(toPosixPath)
+      })
     })
   }
 
