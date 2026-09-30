@@ -6,11 +6,18 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync
 } from 'node:fs'
 import type * as NodeFs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import * as retryOps from './windows-retry-file-operations'
+import {
+  resolveCanonicalPluginWritePath,
+  writeCanonicalOpenCodePluginAtomically,
+  writeOverlayOpenCodePluginAtomically
+} from './opencode-plugin-atomic-write'
 
 type WriteFileSyncFn = typeof NodeFs.writeFileSync
 
@@ -39,12 +46,6 @@ vi.mock('node:fs', async (importOriginal) => {
   }
 })
 
-import {
-  resolveCanonicalPluginWritePath,
-  writeCanonicalOpenCodePluginAtomically,
-  writeOverlayOpenCodePluginAtomically
-} from './opencode-plugin-atomic-write'
-
 afterEach(() => {
   const realWrite = fsMock.getRealWrite()
   if (realWrite) {
@@ -52,7 +53,7 @@ afterEach(() => {
       realWrite(...args)
     )
   }
-  vi.clearAllMocks()
+  vi.restoreAllMocks()
 })
 
 describe('opencode-plugin-atomic-write', () => {
@@ -116,6 +117,74 @@ describe('opencode-plugin-atomic-write', () => {
     expect(lstatSync(linkFile).isSymbolicLink()).toBe(true)
     expect(readFileSync(realFile, 'utf8')).toBe('updated content')
     expect(readFileSync(linkFile, 'utf8')).toBe('updated content')
+
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('preserves dangling symlink and creates destination target in canonical mode', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const testDir = mkdtempSync(join(tmpdir(), 'opencode-dangling-symlink-'))
+    const pluginsDir = join(testDir, 'plugins')
+    mkdirSync(pluginsDir, { recursive: true })
+    const missingTarget = join(testDir, 'dotfiles-plugin.js')
+    const linkFile = join(pluginsDir, 'orca-opencode-status.js')
+
+    symlinkSync(missingTarget, linkFile)
+    expect(existsSync(missingTarget)).toBe(false)
+    expect(lstatSync(linkFile).isSymbolicLink()).toBe(true)
+
+    expect(resolveCanonicalPluginWritePath(linkFile)).toBe(missingTarget)
+
+    writeCanonicalOpenCodePluginAtomically(linkFile, 'dangling resolved content')
+
+    expect(lstatSync(linkFile).isSymbolicLink()).toBe(true)
+    expect(existsSync(missingTarget)).toBe(true)
+    expect(readFileSync(missingTarget, 'utf8')).toBe('dangling resolved content')
+    expect(readFileSync(linkFile, 'utf8')).toBe('dangling resolved content')
+
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('preserves existing file permissions when updating plugin', () => {
+    if (process.platform === 'win32') {
+      return
+    }
+    const realWrite = fsMock.getRealWrite()
+    if (!realWrite) {
+      return
+    }
+    const testDir = mkdtempSync(join(tmpdir(), 'opencode-permissions-'))
+    const pluginPath = join(testDir, 'status.js')
+
+    realWrite(pluginPath, 'old content', { encoding: 'utf8', mode: 0o600 })
+    expect(statSync(pluginPath).mode & 0o777).toBe(0o600)
+
+    writeCanonicalOpenCodePluginAtomically(pluginPath, 'new content')
+    expect(readFileSync(pluginPath, 'utf8')).toBe('new content')
+    expect(statSync(pluginPath).mode & 0o777).toBe(0o600)
+
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('leaves existing target intact and cleans up temp file if rename fails', () => {
+    const testDir = mkdtempSync(join(tmpdir(), 'opencode-rename-fail-'))
+    const pluginPath = join(testDir, 'status.js')
+    const realWrite = fsMock.getRealWrite()
+    if (!realWrite) {
+      return
+    }
+    realWrite(pluginPath, 'original content', 'utf8')
+
+    vi.spyOn(retryOps, 'renameFileWithWindowsRetry').mockImplementation(() => {
+      throw new Error('EPERM: file locked')
+    })
+
+    expect(() => writeCanonicalOpenCodePluginAtomically(pluginPath, 'new content')).toThrow(
+      'EPERM: file locked'
+    )
+    expect(readFileSync(pluginPath, 'utf8')).toBe('original content')
 
     rmSync(testDir, { recursive: true, force: true })
   })

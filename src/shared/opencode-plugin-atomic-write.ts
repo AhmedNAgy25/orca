@@ -3,52 +3,77 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readlinkSync,
   realpathSync,
-  renameSync,
+  statSync,
   unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
+import { renameFileWithWindowsRetry } from './windows-retry-file-operations'
 
 function isEnoentError(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
-// Why: atomic rename on a dotfiles symlink replaces the link itself; resolving realpath updates the target repo file.
+// Why: atomic rename on a dotfiles symlink replaces the link itself; resolving canonical target updates the real repo file.
 export function resolveCanonicalPluginWritePath(pluginPath: string): string {
   try {
-    if (lstatSync(pluginPath).isSymbolicLink()) {
-      return realpathSync.native(pluginPath)
+    const stat = lstatSync(pluginPath)
+    if (!stat.isSymbolicLink()) {
+      return pluginPath
     }
+  } catch (error) {
+    if (isEnoentError(error)) {
+      return pluginPath
+    }
+    throw error
+  }
+
+  // Why: realpathSync.native resolves canonical target when it exists;
+  // if target is missing (dangling symlink), follow readlinkSync chain so the
+  // target file is created at the intended destination and the symlink stays intact.
+  try {
+    return realpathSync.native(pluginPath)
   } catch (error) {
     if (!isEnoentError(error)) {
       throw error
     }
   }
-  return pluginPath
+
+  let current = pluginPath
+  for (let depth = 0; depth < 10; depth++) {
+    try {
+      const link = readlinkSync(current)
+      current = resolve(dirname(current), link)
+      const nextStat = lstatSync(current)
+      if (!nextStat.isSymbolicLink()) {
+        return current
+      }
+    } catch (error) {
+      if (isEnoentError(error)) {
+        return current
+      }
+      throw error
+    }
+  }
+  return current
 }
 
 // Why: write to sibling temp file and rename so concurrent reloads never observe a truncated or missing file.
 function writeAtomicFile(targetPath: string, content: string): void {
   const dir = dirname(targetPath)
   mkdirSync(dir, { recursive: true })
+  let existingMode: number | undefined
+  try {
+    existingMode = statSync(targetPath).mode
+  } catch {
+    // Target does not exist yet.
+  }
   const tmpPath = join(dir, `.${basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`)
   try {
-    writeFileSync(tmpPath, content, 'utf8')
-    try {
-      renameSync(tmpPath, targetPath)
-    } catch (error) {
-      if (process.platform === 'win32') {
-        try {
-          unlinkSync(targetPath)
-          renameSync(tmpPath, targetPath)
-          return
-        } catch {
-          // Fall through to rethrow original error.
-        }
-      }
-      throw error
-    }
+    writeFileSync(tmpPath, content, { encoding: 'utf8', mode: existingMode })
+    renameFileWithWindowsRetry(tmpPath, targetPath)
   } finally {
     if (existsSync(tmpPath)) {
       try {
