@@ -5,7 +5,7 @@ import {
 } from '../../shared/agent-hook-relay'
 import { getDefaultSettings } from '../../shared/constants'
 import type { Store } from '../persistence'
-import { SshRelaySession } from './ssh-relay-session'
+import { SSH_RELAY_PLUGIN_INSTALL_RETRY_DELAY_MS, SshRelaySession } from './ssh-relay-session'
 import type { SshConnection } from './ssh-connection'
 import { createMockDeps, mockDeploySuccess } from './ssh-relay-session-test-fixtures'
 
@@ -201,5 +201,106 @@ describe('SshRelaySession managed hooks', () => {
     expect(lastSources()).toMatchObject({ opencodePluginSource: '', opencode2PluginSource: '' })
     session.dispose()
     expect(cleanup).toHaveBeenCalledOnce()
+  })
+
+  it('retries failed plugin installation on settings change and re-reads latest settings', async () => {
+    vi.useFakeTimers()
+    try {
+      muxRequestMock.mockResolvedValue({ agents: [] })
+      const { mockStore, mockConn, mockPortForward, getMainWindow } = createMockDeps()
+      const settings = getDefaultSettings('/synthetic-home')
+      mockStore.getSettings = () => settings
+      let listener: Parameters<Store['onSettingsChanged']>[0] | undefined
+      mockStore.onSettingsChanged = (callback) => {
+        listener = callback
+        return () => {}
+      }
+      const session = new SshRelaySession(
+        'target-settings-retry',
+        getMainWindow,
+        mockStore,
+        mockPortForward
+      )
+      await session.establish(mockConn)
+
+      let attempt = 0
+      muxRequestMock.mockImplementation(async (method: string) => {
+        if (method === AGENT_HOOK_INSTALL_PLUGINS_METHOD) {
+          attempt++
+          if (attempt === 1) {
+            throw { code: 'SSH_MUX_REQUEST_TIMEOUT', message: 'request timed out' }
+          }
+          return { ok: true }
+        }
+        return { ok: true }
+      })
+
+      settings.disabledTuiAgents = ['opencode']
+      listener?.({ disabledTuiAgents: settings.disabledTuiAgents }, settings)
+      await Promise.resolve()
+      expect(attempt).toBe(1)
+
+      // Settings updated again before retry fires
+      settings.disabledTuiAgents = ['opencode2']
+
+      await vi.advanceTimersByTimeAsync(SSH_RELAY_PLUGIN_INSTALL_RETRY_DELAY_MS)
+
+      expect(attempt).toBe(2)
+      const lastCall = muxRequestMock.mock.calls.findLast(
+        ([method]) => method === AGENT_HOOK_INSTALL_PLUGINS_METHOD
+      )
+      expect(lastCall?.[1]).toMatchObject({
+        opencodePluginSource: expect.stringContaining('/hook/opencode'),
+        opencode2PluginSource: ''
+      })
+
+      session.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels pending plugin installation retry on session teardown', async () => {
+    vi.useFakeTimers()
+    try {
+      muxRequestMock.mockResolvedValue({ agents: [] })
+      const { mockStore, mockConn, mockPortForward, getMainWindow } = createMockDeps()
+      const settings = getDefaultSettings('/synthetic-home')
+      mockStore.getSettings = () => settings
+      let listener: Parameters<Store['onSettingsChanged']>[0] | undefined
+      mockStore.onSettingsChanged = (callback) => {
+        listener = callback
+        return () => {}
+      }
+      const session = new SshRelaySession(
+        'target-settings-cancel',
+        getMainWindow,
+        mockStore,
+        mockPortForward
+      )
+      await session.establish(mockConn)
+
+      let calls = 0
+      muxRequestMock.mockImplementation(async (method: string) => {
+        if (method === AGENT_HOOK_INSTALL_PLUGINS_METHOD) {
+          calls++
+          throw { code: 'SSH_MUX_REQUEST_TIMEOUT', message: 'request timed out' }
+        }
+        return { ok: true }
+      })
+
+      settings.disabledTuiAgents = ['opencode']
+      listener?.({ disabledTuiAgents: settings.disabledTuiAgents }, settings)
+      await Promise.resolve()
+      expect(calls).toBe(1)
+
+      session.dispose()
+
+      await vi.advanceTimersByTimeAsync(SSH_RELAY_PLUGIN_INSTALL_RETRY_DELAY_MS * 5)
+
+      expect(calls).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
